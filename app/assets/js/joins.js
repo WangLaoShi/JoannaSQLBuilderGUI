@@ -18,6 +18,9 @@ const Joins = (() => {
     // =========================================================================
     // Column drag state — one global object (mirrors pattern in canvas.js)
     // =========================================================================
+    /** Distance from the right window edge (px) that reveals an unpinned config panel mid-drag. */
+    const CONFIG_EDGE_PX = 40;
+
     const _drag = {
         active:      false,
         fromTableId: null,
@@ -127,6 +130,7 @@ const Joins = (() => {
         _drag.startX      = e.clientX;
         _drag.startY      = e.clientY;
         _drag.moved       = false;
+        _drag.revealedPanel = false;
 
         e.preventDefault();   // no text-selection during drag
         e.stopPropagation();  // prevent card-header drag from triggering
@@ -142,7 +146,12 @@ const Joins = (() => {
         // reveal the config panel (if hidden) so its drop zones are reachable.
         if (!_drag.moved && Math.hypot(e.clientX - _drag.startX, e.clientY - _drag.startY) > 4) {
             _drag.moved = true;
-            App.showConfigPanel?.();
+            // Pinned panel: reveal right away. Unpinned: only when the pointer
+            // reaches the right edge, so plain table-to-table joins don't pop it up.
+            if (!App.isConfigUnpinned?.()) App.showConfigPanel?.();
+        }
+        if (_drag.moved && App.isConfigUnpinned?.() && e.clientX >= window.innerWidth - CONFIG_EDGE_PX) {
+            if (App.showConfigPanel?.()) _drag.revealedPanel = true;
         }
 
         const canvasRect = document.getElementById('canvas').getBoundingClientRect();
@@ -209,6 +218,12 @@ const Joins = (() => {
                 QueryPanel.onColumnDrop(zone, _drag.fromTableId, _drag.fromCol);
             }
         }
+
+        // Panel was only revealed by this drag and the drop landed outside it → hide again
+        if (_drag.revealedPanel && App.isConfigUnpinned?.() && !el?.closest('#config-panel')) {
+            App.hideConfigPanel?.();
+        }
+        _drag.revealedPanel = false;
 
         _drag.fromTableId = null;
         _drag.fromCol     = null;

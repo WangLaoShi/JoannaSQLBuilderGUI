@@ -5310,9 +5310,22 @@ const App = (() => {
 
     /** Expand the config (right) panel if it is collapsed. */
     function showConfigPanel() {
-        if (!_PANE_DEFAULTS.config.el?.classList.contains('is-collapsed')) return;
+        if (!_PANE_DEFAULTS.config.el?.classList.contains('is-collapsed')) return false;
         _applyPaneState('config', false);
         localStorage.setItem('pane-config', 'expanded');
+        return true;
+    }
+
+    /** Collapse the config (right) panel if it is expanded. */
+    function hideConfigPanel() {
+        if (_PANE_DEFAULTS.config.el?.classList.contains('is-collapsed')) return;
+        _applyPaneState('config', true);
+        localStorage.setItem('pane-config', 'collapsed');
+    }
+
+    /** True when the config panel is unpinned (auto-hides on outside click). */
+    function isConfigUnpinned() {
+        return !!_PANE_DEFAULTS.config.autoHide;
     }
 
     function _togglePane(key) {
@@ -5483,6 +5496,8 @@ const App = (() => {
         applyContext,
         loadContextList: _loadContextList,
         showConfigPanel,
+        hideConfigPanel,
+        isConfigUnpinned,
         exportTabState,
         importTabState,
         notify: _notify,   // exposed for use by canvas.js and future phase files
