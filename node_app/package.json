@@ -1,0 +1,43 @@
+{
+  "name": "sql-joiner-node",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SQL Joiner without PHP. A local Node server speaks MySQL, serves the same canvas, and Electron installs it for students.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test test/parity.test.js test/http.test.js",
+    "desktop": "electron .",
+    "pack": "electron-builder --mac dmg --win nsis zip",
+    "pack:mac": "electron-builder --mac dmg",
+    "pack:win": "electron-builder --win nsis zip"
+  },
+  "dependencies": {
+    "mysql2": "^3.15.3"
+  },
+  "devDependencies": {
+    "electron": "^35.7.5",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.sqljoiner.node",
+    "productName": "SQL Joiner",
+    "asar": true,
+    "directories": { "output": "dist" },
+    "files": ["electron/**", "server/**", "public/**", "package.json"],
+    "mac": {
+      "category": "public.app-category.education",
+      "identity": null,
+      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }]
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "zip", "arch": ["x64"] }
+      ]
+    },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+  }
+}
