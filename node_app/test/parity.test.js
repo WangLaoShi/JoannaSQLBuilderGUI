@@ -57,6 +57,22 @@ test('joins, having, distinct and a subquery table', () => {
   assert.match(sub.sql, /FROM\n\t\(SELECT id FROM t\) sq/);
 });
 
+test('a trailing semicolon in a subquery is omitted from the outer statement', () => {
+  const { sql } = assembleQuery({
+    tables: [{
+      id: 'sq',
+      name: 'sq',
+      alias: 's',
+      order: 1,
+      isSubquery: true,
+      subquery: 'SELECT product_type, sale_price FROM product WHERE id = 1;',
+    }],
+    limit: 10,
+  });
+  assert.match(sql, /FROM\n\t\(SELECT product_type, sale_price FROM product WHERE id = 1\) s/);
+  assert.doesNotMatch(sql, /;/);
+});
+
 test('a disconnected second table is a preview warning and an execute error', () => {
   const state = {
     tables: [course, { id: 't2', name: 'teacher', alias: 't', order: 2 }],

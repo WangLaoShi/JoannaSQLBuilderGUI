@@ -3253,9 +3253,11 @@ const QueryPanel = (() => {
         }
 
         // --- FROM + JOINs ---
-        // Helper: produce `db`.`table` for normal tables, or (subquery SQL) for subquery tables
+        // Helper: produce `db`.`table` for normal tables, or (subquery SQL) for subquery tables.
+        // Drop a trailing semicolon: it is valid on the card's own Run, but illegal inside FROM ( ... ).
+        const subquerySql = sql => String(sql ?? '').trim().replace(/;+\s*$/, '').trim();
         const tableRef = t => t.isSubquery && t.subquery?.trim()
-            ? `(${t.subquery.trim()})`
+            ? `(${subquerySql(t.subquery)})`
             : t.database
                 ? `\`${t.database}\`.\`${t.name}\``
                 : t.name;

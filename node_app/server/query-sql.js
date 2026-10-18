@@ -22,8 +22,14 @@ function esc(name) {
   return String(name).replaceAll('`', '``');
 }
 
+function subquerySql(sql) {
+  // A trailing semicolon ends a standalone statement. Inside FROM ( ... ) it
+  // becomes the illegal token sequence ";)".
+  return String(sql ?? '').trim().replace(/;+\s*$/, '').trim();
+}
+
 function tableRef(table) {
-  if (table.isSubquery) return `(${String(table.subquery ?? '').trim()})`;
+  if (table.isSubquery) return `(${subquerySql(table.subquery)})`;
   const name = `\`${esc(table.name)}\``;
   if (table.database) return `\`${esc(table.database)}\`.${name}`;
   return name;
