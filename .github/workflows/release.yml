@@ -100,10 +100,12 @@ jobs:
           body: |
             SQL Joiner ${{ steps.ver.outputs.version }}。安装包没有签名。
 
-            - Apple 芯片的 Mac：`SQL Joiner-${{ steps.ver.outputs.version }}-arm64.dmg`
-            - Intel Mac：`SQL Joiner-${{ steps.ver.outputs.version }}.dmg`
-            - Windows 安装程序：`SQL Joiner Setup ${{ steps.ver.outputs.version }}.exe`
-            - Windows 压缩包：`SQL Joiner-${{ steps.ver.outputs.version }}-win.zip`
+            下载名里的空格会显示成点。装好后的应用名仍是 SQL Joiner。
+
+            - Apple 芯片的 Mac：`SQL.Joiner-${{ steps.ver.outputs.version }}-arm64.dmg`
+            - Intel Mac：`SQL.Joiner-${{ steps.ver.outputs.version }}.dmg`
+            - Windows 安装程序：`SQL.Joiner.Setup.${{ steps.ver.outputs.version }}.exe`
+            - Windows 压缩包：`SQL.Joiner-${{ steps.ver.outputs.version }}-win.zip`
 
             Mac 第一次打开：在 Finder 里按住 Control 点应用，选择「打开」。Windows 若出现 SmartScreen，选择「仍要运行」。
         env:

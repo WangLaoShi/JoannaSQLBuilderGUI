@@ -85,12 +85,14 @@ git push origin v1.1.1
 3. 打开仓库的 Actions。先是 Ubuntu 上的测试。测试通过后，macOS 运行 `npm run pack`，同时打出 Apple 芯片、Intel Mac 和 Windows x64 的包。包没有签名。
 4. 打包成功后，同一个 Action 建立或更新 [Release](https://github.com/WangLaoShi/JoannaSQLBuilderGUI/releases)，并把下面四个文件挂上去。文件名里的版本号就是 `package.json` 里的号。
 
-| 文件 | 给谁用 |
+打包机上的文件名带空格，例如 `SQL Joiner-1.1.1-arm64.dmg`。GitHub Release 的附件名不能有空格，所以上传后空格会变成点。下载时看到的是：
+
+| Release 上的文件 | 给谁用 |
 |---|---|
-| `SQL Joiner-<版本>-arm64.dmg` | Apple 芯片的 Mac |
-| `SQL Joiner-<版本>.dmg` | Intel Mac |
-| `SQL Joiner Setup <版本>.exe` | Windows 安装程序 |
-| `SQL Joiner-<版本>-win.zip` | Windows 解压后直接运行 |
+| `SQL.Joiner-<版本>-arm64.dmg` | Apple 芯片的 Mac |
+| `SQL.Joiner-<版本>.dmg` | Intel Mac |
+| `SQL.Joiner.Setup.<版本>.exe` | Windows 安装程序 |
+| `SQL.Joiner-<版本>-win.zip` | Windows 解压后直接运行 |
 
 也可以不打标签：在 GitHub 的 Actions 页选 “Check and release”，点 “Run workflow”，勾选发布 Release。它会按当前 `main` 上的 `package.json` 建立 `v<版本>` 并挂上安装包。
 
