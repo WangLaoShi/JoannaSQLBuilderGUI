@@ -1,6 +1,7 @@
 # 推送到 main：只跑测试。
 # 推送标签 v1.1.1（必须等于 package.json 的 version）：测试、打包、发布 Release。
-# 也可以在 Actions 页手动运行，并勾选发布 Release。
+# 手动运行只接受 main。勾选发布时，inputs.release 是字符串 "true" / "false"。
+# Mac 包在 macOS 上打，Windows 包在 Windows 上打，这样 mysql2 的原生模块对得上系统。
 # 安装包没有签名。CSC_IDENTITY_AUTO_DISCOVERY 关掉，避免在钥匙串上一直等待。
 
 name: Check and release
@@ -17,7 +18,7 @@ on:
         default: true
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -49,10 +50,10 @@ jobs:
             exit 1
           fi
 
-  pack:
-    name: Pack installers
+  pack-mac:
+    name: Pack macOS
     needs: test
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: macos-latest
     timeout-minutes: 45
     defaults:
@@ -66,20 +67,70 @@ jobs:
           cache: npm
           cache-dependency-path: node_app/package-lock.json
       - run: npm ci
-      - name: Pack macOS and Windows
+      - name: Pack macOS
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npm run pack
+        run: npm run pack:mac
       - name: List installers
-        run: ls -lh dist/*.dmg dist/*.exe dist/*.zip
+        run: ls -lh dist/*.dmg
       - uses: actions/upload-artifact@v4
         with:
-          name: sql-joiner-installers
+          name: sql-joiner-mac
+          if-no-files-found: error
+          path: node_app/dist/*.dmg
+
+  pack-win:
+    name: Pack Windows
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: node_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: node_app/package-lock.json
+      - run: npm ci
+      - name: Pack Windows
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run pack:win
+      - name: List installers
+        shell: bash
+        run: ls -lh dist/*.exe dist/*.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sql-joiner-win
           if-no-files-found: error
           path: |
-            node_app/dist/*.dmg
             node_app/dist/*.exe
             node_app/dist/*.zip
+
+  release:
+    name: Publish Release
+    needs: [pack-mac, pack-win]
+    if: always() && needs.pack-mac.result == 'success' && needs.pack-win.result == 'success' && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: node_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sql-joiner-*
+          path: installers
+          merge-multiple: true
       - name: Read version
         id: ver
         run: |
@@ -87,16 +138,15 @@ jobs:
           echo "version=$ver" >> "$GITHUB_OUTPUT"
           echo "tag=v$ver" >> "$GITHUB_OUTPUT"
       - name: Publish Release
-        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: SQL Joiner ${{ steps.ver.outputs.version }}
           generate_release_notes: true
           files: |
-            node_app/dist/*.dmg
-            node_app/dist/*.exe
-            node_app/dist/*.zip
+            installers/*.dmg
+            installers/*.exe
+            installers/*.zip
           body: |
             SQL Joiner ${{ steps.ver.outputs.version }}。安装包没有签名。
 

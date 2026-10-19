@@ -24,6 +24,7 @@ test('profiles hide passwords, contexts round-trip, and the page is served', asy
     const page = await fetch(`http://127.0.0.1:${started.port}/`);
     const html = await page.text();
     assert.equal(page.status, 200);
+    assert.equal(page.headers.get('access-control-allow-origin'), null);
     assert.match(html, /i18n\.js/);
     assert.match(html, /tabbar/);
     assert.match(html, new RegExp(`SQL Joiner ${APP_VERSION}`));
@@ -97,6 +98,18 @@ test('sqlite profile can list tables, run a query, and import SQL', async () => 
     assert.equal(ran.json.success, true, ran.json.message);
     assert.deepEqual(ran.json.data.rows, [['语文'], ['数学']]);
     assert.deepEqual(ran.json.data.cols, ['c_name']);
+
+    const quoted = await post(started.port, 'query.executeRaw', { profileId: id, sql: "SELECT c_name FROM course WHERE c_name = '语;文'" });
+    assert.equal(quoted.json.success, true, quoted.json.message);
+    assert.deepEqual(quoted.json.data.rows, []);
+
+    const write = await post(started.port, 'query.executeRaw', { profileId: id, sql: 'DELETE FROM course' });
+    assert.equal(write.json.success, false);
+    const stacked = await post(started.port, 'query.executeRaw', { profileId: id, sql: 'SELECT 1; DELETE FROM course' });
+    assert.equal(stacked.json.success, false);
+    const kept = await post(started.port, 'query.executeRaw', { profileId: id, sql: 'SELECT COUNT(*) AS n FROM course' });
+    assert.equal(kept.json.success, true, kept.json.message);
+    assert.equal(Number(kept.json.data.rows[0][0]), 2);
 
     const built = await post(started.port, 'query.execute', {
       profileId: id,

@@ -5,7 +5,7 @@ import { HttpError } from './errors.js';
 import { ProfileStore } from './profiles.js';
 import { ContextStore } from './contexts.js';
 import { openDb, projectResult } from './db.js';
-import { assembleQuery, containsVariables } from './query-sql.js';
+import { assembleQuery, assertSingleRead, containsVariables } from './query-sql.js';
 import { parseSql } from './query-parser.js';
 import * as schema from './schema.js';
 import { APP_NAME, APP_VERSION } from './version.js';
@@ -47,6 +47,7 @@ export function createApp({ storageDir }) {
     if (containsVariables(sql)) {
       throw new HttpError('Queries containing session variables (@name) cannot be executed against the database. Remove variables before running.', 400);
     }
+    assertSingleRead(sql);
     const key = String(tabId || '').replace(/[^\w-]/g, '').slice(0, 40);
     if (db.kind === 'mysql' && key) active.set(key, { threadId: db.threadId, profileId: null });
     try {
@@ -138,6 +139,7 @@ export function createApp({ storageDir }) {
       if (sql === '') throw new HttpError('sql is required.', 400);
       const { profile, db } = await withProfile(body.profileId);
       const cleanSql = sql.replace(/^\s*EXPLAIN\s+/i, '');
+      assertSingleRead(cleanSql);
       try {
         await db.query(`EXPLAIN ${cleanSql}`);
         const parsed = parseSql(cleanSql);

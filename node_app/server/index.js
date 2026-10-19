@@ -23,23 +23,41 @@ function send(res, status, body, type = 'application/json; charset=utf-8') {
   const payload = typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body);
   res.writeHead(status, {
     'Content-Type': type,
-    'Access-Control-Allow-Origin': '*',
     'Cache-Control': 'no-store',
   });
   res.end(payload);
 }
 
+const MAX_BODY = 5 * 1024 * 1024;
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on('data', c => chunks.push(c));
+    let size = 0;
+    let settled = false;
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    };
+    req.on('data', c => {
+      if (settled) return;
+      size += c.length;
+      if (size > MAX_BODY) {
+        fail(new HttpError('Request body is too large.', 413));
+        return;
+      }
+      chunks.push(c);
+    });
     req.on('end', () => {
+      if (settled) return;
+      settled = true;
       const raw = Buffer.concat(chunks).toString('utf8');
       if (!raw) return resolve({});
       try { resolve(JSON.parse(raw)); }
       catch { reject(new HttpError('Invalid JSON body.', 400)); }
     });
-    req.on('error', reject);
+    req.on('error', fail);
   });
 }
 
@@ -51,12 +69,7 @@ export function startServer({ port = 4173, storageDir, host = '127.0.0.1' } = {}
   const server = http.createServer(async (req, res) => {
     try {
       if (req.method === 'OPTIONS') {
-        res.writeHead(204, {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, X-Tab-Id',
-        });
-        res.end();
+        send(res, 204, '');
         return;
       }
       const url = new URL(req.url, 'http://local');

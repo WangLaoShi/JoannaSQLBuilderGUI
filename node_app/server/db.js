@@ -37,10 +37,9 @@ export async function openDb(profile) {
       db,
       async query(sql) {
         const trimmed = sql.trim();
-        const isSelect = /^(select|pragma|explain|with)\b/i.test(trimmed);
-        if (!isSelect) {
-          db.exec(sql);
-          return { rows: [], fields: [] };
+        const isRead = /^(select|pragma|explain|with)\b/i.test(trimmed);
+        if (!isRead) {
+          throw new Error('Only a read query can be executed.');
         }
         const stmt = db.prepare(sql);
         const objects = stmt.all();
@@ -63,7 +62,7 @@ export async function openDb(profile) {
     database: profile.database || undefined,
     charset: 'utf8mb4',
     connectTimeout: 5000,
-    multipleStatements: true,
+    multipleStatements: false,
     rowsAsArray: true,
     dateStrings: true,
   });

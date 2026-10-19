@@ -22,6 +22,70 @@ function esc(name) {
   return String(name).replaceAll('`', '``');
 }
 
+const READ_START = /^(select|with|explain|show|describe|desc|pragma)\b/i;
+const WRITE_WORD = /^(insert|update|delete|drop|alter|create|replace|truncate|grant|revoke|attach|detach|rename)$/i;
+
+function skipQuoted(sql, i) {
+  const quote = sql[i];
+  i += 1;
+  while (i < sql.length) {
+    if (sql[i] === '\\' && quote !== '`') { i += 2; continue; }
+    if (sql[i] === quote) {
+      if (sql[i + 1] === quote) { i += 2; continue; }
+      return i + 1;
+    }
+    i += 1;
+  }
+  return i;
+}
+
+/**
+ * User-supplied SQL may only be one read statement. A semicolon inside a
+ * quote stays; a second statement, or a write keyword outside quotes, does not.
+ */
+export function assertSingleRead(sql) {
+  const text = String(sql ?? '').trim().replace(/;+\s*$/, '');
+  if (!READ_START.test(text)) {
+    throw new HttpError('Only a single read query can be run (SELECT, WITH, EXPLAIN, SHOW, or DESCRIBE).', 400);
+  }
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === "'" || c === '"' || c === '`') { i = skipQuoted(text, i); continue; }
+    if (c === '-' && text[i + 1] === '-') {
+      const nl = text.indexOf('\n', i);
+      i = nl < 0 ? text.length : nl + 1;
+      continue;
+    }
+    if (c === '#') {
+      const nl = text.indexOf('\n', i);
+      i = nl < 0 ? text.length : nl + 1;
+      continue;
+    }
+    if (c === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      i = end < 0 ? text.length : end + 2;
+      continue;
+    }
+    if (c === ';') {
+      if (text.slice(i + 1).trim() !== '') {
+        throw new HttpError('Only one SQL statement can be run at a time.', 400);
+      }
+      break;
+    }
+    if (/[A-Za-z_]/.test(c)) {
+      let j = i + 1;
+      while (j < text.length && /[A-Za-z0-9_]/.test(text[j])) j += 1;
+      if (WRITE_WORD.test(text.slice(i, j))) {
+        throw new HttpError('Only a read query can be run. Write statements are not executed.', 400);
+      }
+      i = j;
+      continue;
+    }
+    i += 1;
+  }
+}
+
 function subquerySql(sql) {
   // A trailing semicolon ends a standalone statement. Inside FROM ( ... ) it
   // becomes the illegal token sequence ";)".

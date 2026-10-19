@@ -174,7 +174,17 @@ const Islands = (() => {
     // =========================================================================
     // selectIsland — public; selects an island by key and blits state
     // =========================================================================
-    function selectIsland(key) {
+    function _markSelected(key) {
+        _container?.querySelectorAll('.island-rect').forEach(rect => {
+            const on = rect.dataset.islandKey === key;
+            rect.classList.toggle('island-rect--selected', on);
+            rect.querySelector('.island-radio')?.classList.toggle('island-radio--selected', on);
+        });
+        const enabledJoins = State.joins.filter(j => j.enabled !== false);
+        _applyOpacity(key, App.computeIslands(State.tables, enabledJoins));
+    }
+
+    function selectIsland(key, opts = {}) {
         const changed = State.selectedIslandKey !== key;
         if (changed) {
             // Flush outgoing island's config while selectedIslandKey still points to it
@@ -189,9 +199,11 @@ const Islands = (() => {
         } else {
             App.updateSQLPreview();
         }
-        // Only re-render rects when the selected island changed (avoids destroying
-        // focused inputs, e.g. the label input, when clicking the same island)
-        if (changed) recompute();
+        // Re-rendering replaces the note node under the cursor, so a click in
+        // the note only updates the selected class and leaves that node in place.
+        if (!changed) return;
+        if (opts.keepRects) _markSelected(key);
+        else recompute();
     }
 
     // =========================================================================
@@ -523,26 +535,27 @@ const Islands = (() => {
     }
 
     function _sanitizeNoteHtml(html) {
-        const root = document.createElement('div');
-        root.innerHTML = html || '';
         const allow = new Set(['P', 'BR', 'B', 'STRONG', 'I', 'EM', 'UL', 'OL', 'LI', 'DIV']);
-        const clean = node => {
-            [...node.childNodes].forEach(child => {
-                if (child.nodeType !== 1) {
-                    if (child.nodeType !== 3) child.remove();
-                    return;
+        const parsed = new DOMParser().parseFromString(String(html || ''), 'text/html');
+        const out = document.createElement('div');
+        const copy = (src, dst) => {
+            for (const child of [...src.childNodes]) {
+                if (child.nodeType === 3) {
+                    dst.appendChild(document.createTextNode(child.textContent));
+                    continue;
                 }
-                clean(child);
+                if (child.nodeType !== 1) continue;
                 if (!allow.has(child.tagName)) {
-                    while (child.firstChild) node.insertBefore(child.firstChild, child);
-                    child.remove();
-                } else {
-                    [...child.attributes].forEach(attr => child.removeAttribute(attr.name));
+                    copy(child, dst);
+                    continue;
                 }
-            });
+                const el = document.createElement(child.tagName.toLowerCase());
+                copy(child, el);
+                dst.appendChild(el);
+            }
         };
-        clean(root);
-        return root.innerHTML;
+        copy(parsed.body, out);
+        return out.innerHTML;
     }
 
     function _mountIslandNote(rect, key) {
@@ -587,10 +600,7 @@ const Islands = (() => {
             if (e.button !== 0) return;
             e.stopPropagation();
             if (State.selectedIslandKey === key) return;
-            selectIsland(key);
-            requestAnimationFrame(() => {
-                _container?.querySelector(`.island-rect[data-island-key="${CSS.escape(key)}"] .island-note`)?.focus();
-            });
+            selectIsland(key, { keepRects: true });
         };
         block.addEventListener('mousedown', keepFocus);
         note.addEventListener('click', e => e.stopPropagation());
