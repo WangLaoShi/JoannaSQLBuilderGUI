@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { startServer } from '../server/index.js';
+import { APP_VERSION } from '../server/version.js';
 
 async function post(port, action, body = {}, headers = {}) {
   const res = await fetch(`http://127.0.0.1:${port}/api.php?action=${encodeURIComponent(action)}`, {
@@ -25,9 +26,14 @@ test('profiles hide passwords, contexts round-trip, and the page is served', asy
     assert.equal(page.status, 200);
     assert.match(html, /i18n\.js/);
     assert.match(html, /tabbar/);
+    assert.match(html, new RegExp(`SQL Joiner ${APP_VERSION}`));
+    assert.doesNotMatch(html, /__APP_VERSION__/);
 
     const appPage = await fetch(`http://127.0.0.1:${started.port}/index.php?tab=1`);
-    assert.match(await appPage.text(), /btn-run-query/);
+    const appHtml = await appPage.text();
+    assert.match(appHtml, /btn-run-query/);
+    assert.match(appHtml, new RegExp(`id="app-version">${APP_VERSION}`));
+    assert.doesNotMatch(appHtml, /__APP_VERSION__/);
 
     const empty = await post(started.port, 'profile.list');
     assert.equal(empty.json.success, true);

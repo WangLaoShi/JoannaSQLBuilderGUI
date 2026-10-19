@@ -159,14 +159,15 @@ const Islands = (() => {
             const bbox = _boundingBox(islandIds);
             if (!bbox) return;
             const isMinimized = State.islandMinimized?.[key];
-            const rectH = isMinimized ? MINIMIZED_HEIGHT : (bbox.h + PADDING_TOP + PADDING);
+            const topPad = isMinimized ? PADDING_TOP : _topPad(rect);
+            const rectH = isMinimized ? MINIMIZED_HEIGHT : (bbox.h + topPad + PADDING);
             rect.style.left   = (bbox.x - PADDING) + 'px';
-            rect.style.top    = (bbox.y - PADDING_TOP) + 'px';
+            rect.style.top    = (bbox.y - topPad) + 'px';
             rect.style.width  = (bbox.w + PADDING * 2) + 'px';
             rect.style.height = rectH + 'px';
 
             // Keep pin container in sync
-            _updatePinContainerGeometry(key, bbox.x - PADDING, bbox.y - PADDING_TOP, rectH);
+            _updatePinContainerGeometry(key, bbox.x - PADDING, bbox.y - topPad, rectH);
         });
     }
 
@@ -451,6 +452,7 @@ const Islands = (() => {
 
             header.addEventListener('touchstart', () => selectIsland(key), { capture: true, passive: true });
             rect.appendChild(header);
+            if (!isMinimized) _mountIslandNote(rect, key);
             _applyIslandColor(rect, key);
 
             // Right-click on island background pans the canvas instead of dragging the island
@@ -500,7 +502,123 @@ const Islands = (() => {
             });
 
             _container.appendChild(rect);
+            _layoutIslandRect(rect, bbox, isMinimized, key);
         });
+    }
+
+    function _topPad(rect) {
+        const block = rect.querySelector('.island-note-block');
+        if (!block) return PADDING_TOP;
+        return Math.max(PADDING_TOP, block.offsetTop + block.offsetHeight + 8);
+    }
+
+    function _layoutIslandRect(rect, bbox, isMinimized, key) {
+        const topPad = isMinimized ? PADDING_TOP : _topPad(rect);
+        const rectH  = isMinimized ? MINIMIZED_HEIGHT : (bbox.h + topPad + PADDING);
+        rect.style.left   = (bbox.x - PADDING) + 'px';
+        rect.style.top    = (bbox.y - topPad) + 'px';
+        rect.style.width  = (bbox.w + PADDING * 2) + 'px';
+        rect.style.height = rectH + 'px';
+        _updatePinContainerGeometry(key, bbox.x - PADDING, bbox.y - topPad, rectH);
+    }
+
+    function _sanitizeNoteHtml(html) {
+        const root = document.createElement('div');
+        root.innerHTML = html || '';
+        const allow = new Set(['P', 'BR', 'B', 'STRONG', 'I', 'EM', 'UL', 'OL', 'LI', 'DIV']);
+        const clean = node => {
+            [...node.childNodes].forEach(child => {
+                if (child.nodeType !== 1) {
+                    if (child.nodeType !== 3) child.remove();
+                    return;
+                }
+                clean(child);
+                if (!allow.has(child.tagName)) {
+                    while (child.firstChild) node.insertBefore(child.firstChild, child);
+                    child.remove();
+                } else {
+                    [...child.attributes].forEach(attr => child.removeAttribute(attr.name));
+                }
+            });
+        };
+        clean(root);
+        return root.innerHTML;
+    }
+
+    function _mountIslandNote(rect, key) {
+        const block = document.createElement('div');
+        block.className = 'island-note-block';
+
+        const bar = document.createElement('div');
+        bar.className = 'island-note-toolbar';
+        [['bold', 'B', 'Bold'], ['italic', 'I', 'Italic'], ['insertUnorderedList', '•', 'Bulleted list']].forEach(([cmd, glyph, title]) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = glyph;
+            btn.title = title;
+            if (cmd === 'bold') btn.style.fontWeight = '700';
+            btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
+            btn.addEventListener('click', e => {
+                e.stopPropagation();
+                rect.querySelector('.island-note')?.focus();
+                document.execCommand(cmd, false, null);
+                rect.querySelector('.island-note')?.dispatchEvent(new Event('input'));
+            });
+            bar.appendChild(btn);
+        });
+
+        const placeholder = document.createElement('div');
+        placeholder.className = 'island-note-placeholder';
+        placeholder.textContent = 'What this group is looking up, and why…';
+
+        const note = document.createElement('div');
+        note.className = 'island-note';
+        note.contentEditable = 'true';
+        note.spellcheck = false;
+        const saved = State.islandNotesDetail?.[key] ?? '';
+        if (saved) note.innerHTML = _sanitizeNoteHtml(saved);
+        if ((note.textContent || '').trim()) block.classList.add('has-text');
+
+        const keepFocus = e => {
+            e.stopPropagation();
+            const was = State.selectedIslandKey === key;
+            selectIsland(key);
+            if (!was) {
+                requestAnimationFrame(() => {
+                    _container?.querySelector(`.island-rect[data-island-key="${CSS.escape(key)}"] .island-note`)?.focus();
+                });
+            }
+        };
+        note.addEventListener('mousedown', keepFocus);
+        note.addEventListener('click', e => e.stopPropagation());
+        note.addEventListener('focus', () => {
+            if (typeof UndoRedo !== 'undefined') UndoRedo.snapshot();
+        });
+        note.addEventListener('keydown', e => {
+            e.stopPropagation();
+            if (e.key === 'Escape') note.blur();
+        });
+        note.addEventListener('paste', e => {
+            e.preventDefault();
+            const html = e.clipboardData?.getData('text/html');
+            const text = e.clipboardData?.getData('text/plain') ?? '';
+            if (html) document.execCommand('insertHTML', false, _sanitizeNoteHtml(html));
+            else document.execCommand('insertText', false, text);
+        });
+        note.addEventListener('input', () => {
+            if (!State.islandNotesDetail || Array.isArray(State.islandNotesDetail)) State.islandNotesDetail = {};
+            const empty = !(note.textContent || '').replace(/\u00a0/g, ' ').trim();
+            block.classList.toggle('has-text', !empty);
+            State.islandNotesDetail[key] = empty ? '' : _sanitizeNoteHtml(note.innerHTML);
+            if (empty) delete State.islandNotesDetail[key];
+            const ids = key.split('|');
+            const bbox = _boundingBox(ids);
+            if (bbox) _layoutIslandRect(rect, bbox, false, key);
+        });
+
+        block.append(bar, placeholder, note);
+        rect.appendChild(block);
+        if (window.I18n) I18n.apply(block);
     }
 
     // =========================================================================

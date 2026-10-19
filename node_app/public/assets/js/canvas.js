@@ -96,13 +96,16 @@ const Canvas = (() => {
 
     /** Logical canvas size (matches CSS #canvas min-width / min-height). */
     const CANVAS_LOGICAL_PX   = 5000;
-    /** Canvas-only overview zoom — not browser zoom. */
+    /** Toolbar overview button jumps between these two. Wheel and the canvas buttons use the same scale. */
     const OVERVIEW_ZOOM_SCALE = 0.7;
+    const ZOOM_MIN            = 0.5;
+    const ZOOM_MAX            = 2;
+    const ZOOM_STEP           = 1.12;
+    let _zoom                 = 1;
+    const _midZoom = { active: false, y: 0, base: 1, x: 0, cy: 0 };
 
     function _canvasContentScale() {
-        return document.body.classList.contains('is-canvas-overview-zoom')
-            ? OVERVIEW_ZOOM_SCALE
-            : 1;
+        return _zoom;
     }
 
     function getContentScale() {
@@ -273,7 +276,17 @@ const Canvas = (() => {
         const wrapper = document.getElementById('canvas-wrapper');
         wrapper.addEventListener('contextmenu', e => e.preventDefault());
         wrapper.addEventListener('mousedown', (e) => {
-            // Only right-click on the wrapper / scale sleeve / bare canvas (not a card or line)
+            if (e.button === 1) {
+                if (e.target.closest('#canvas-zoom-controls, button, input, textarea, .island-note')) return;
+                e.preventDefault();
+                _midZoom.active = true;
+                _midZoom.y      = e.clientY;
+                _midZoom.base   = _zoom;
+                _midZoom.x      = e.clientX;
+                _midZoom.cy     = e.clientY;
+                return;
+            }
+            // Only right-click or left-click on the wrapper / scale sleeve / bare canvas (not a card or line)
             const scaleWrap = document.getElementById('canvas-scale-wrap');
             const canvasEl  = document.getElementById('canvas');
             if (e.target !== wrapper && e.target !== canvasEl && e.target !== scaleWrap) return;
@@ -287,6 +300,21 @@ const Canvas = (() => {
             wrapper.style.cursor = 'grabbing';
             e.preventDefault();
         });
+        wrapper.addEventListener('auxclick', e => {
+            if (e.button === 1) e.preventDefault();
+        });
+        wrapper.addEventListener('wheel', e => {
+            if (!e.ctrlKey && !e.metaKey) return;
+            if (e.target.closest('#canvas-zoom-controls')) return;
+            e.preventDefault();
+            const factor = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+            _setZoom(_zoom * factor, e.clientX, e.clientY);
+        }, { passive: false });
+        document.getElementById('btn-canvas-zoom-in')
+            ?.addEventListener('click', () => _setZoom(_zoom * ZOOM_STEP));
+        document.getElementById('btn-canvas-zoom-out')
+            ?.addEventListener('click', () => _setZoom(_zoom / ZOOM_STEP));
+        _paintZoom();
     }
 
     // =========================================================================
@@ -1493,6 +1521,11 @@ const Canvas = (() => {
             wrapper.scrollLeft = _pan.scrollX - dx;
             wrapper.scrollTop  = _pan.scrollY - dy;
         }
+
+        if (_midZoom.active) {
+            const delta = _midZoom.y - e.clientY;
+            _setZoom(_midZoom.base * Math.exp(delta / 220), _midZoom.x, _midZoom.cy, { silent: true });
+        }
     }
 
     function _onMouseUp() {
@@ -1552,6 +1585,10 @@ const Canvas = (() => {
             document.getElementById('canvas-wrapper').style.cursor = '';
             // Suppress the context menu that fires when the mouse is released outside the canvas
             document.addEventListener('contextmenu', e => e.preventDefault(), { once: true, capture: true });
+        }
+        if (_midZoom.active) {
+            _midZoom.active = false;
+            _redrawZoomDependents();
         }
     }
 
@@ -2518,43 +2555,20 @@ const Canvas = (() => {
         if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
 
         const wrap           = document.getElementById('canvas-scale-wrap');
-        const wasOverview    = document.body.classList.contains('is-canvas-overview-zoom');
+        const zoomBefore     = _zoom;
 
         function _suspendOverviewZoomForCapture() {
-            if (!wasOverview || !wrap) return;
-            document.body.classList.remove('is-canvas-overview-zoom');
-            wrap.classList.remove('is-overview-active');
-            wrap.style.width  = '';
-            wrap.style.height = '';
-            canvasEl.classList.remove('is-overview-zoom');
-            const jid = new Set();
-            (State.joins || []).forEach(j => {
-                jid.add(j.fromTableId);
-                jid.add(j.toTableId);
-            });
-            jid.forEach(id => {
-                if (typeof Joins !== 'undefined') Joins.redrawForTable(id);
-            });
-            if (typeof Islands !== 'undefined') Islands.redrawPositions?.();
+            if (zoomBefore === 1 || !wrap) return;
+            _zoom = 1;
+            _paintZoom();
+            _redrawZoomDependents();
         }
 
         function _restoreOverviewZoomAfterCapture() {
-            if (!wasOverview || !wrap) return;
-            document.body.classList.add('is-canvas-overview-zoom');
-            wrap.classList.add('is-overview-active');
-            const dim = Math.round(CANVAS_LOGICAL_PX * OVERVIEW_ZOOM_SCALE);
-            wrap.style.width  = dim + 'px';
-            wrap.style.height = dim + 'px';
-            canvasEl.classList.add('is-overview-zoom');
-            const jid = new Set();
-            (State.joins || []).forEach(j => {
-                jid.add(j.fromTableId);
-                jid.add(j.toTableId);
-            });
-            jid.forEach(id => {
-                if (typeof Joins !== 'undefined') Joins.redrawForTable(id);
-            });
-            if (typeof Islands !== 'undefined') Islands.redrawPositions?.();
+            if (zoomBefore === 1 || !wrap) return;
+            _zoom = zoomBefore;
+            _paintZoom();
+            _redrawZoomDependents();
         }
 
         try {
@@ -2887,7 +2901,7 @@ const Canvas = (() => {
             App.notify?.('Screenshot failed: ' + err.message, 'error');
         } finally {
             _restoreOverviewZoomAfterCapture();
-            if (wasOverview) {
+            if (zoomBefore !== 1) {
                 requestAnimationFrame(() => requestAnimationFrame(() => focusTables()));
             }
             if (btn) { btn.textContent = origText; btn.disabled = false; }
@@ -3013,24 +3027,30 @@ const Canvas = (() => {
         reader.readAsText(file);
     }
 
-    function setOverviewZoom(on) {
+    function _paintZoom() {
         const wrap   = document.getElementById('canvas-scale-wrap');
         const canvas = document.getElementById('canvas');
         if (!wrap || !canvas) return;
-        const dim = Math.round(CANVAS_LOGICAL_PX * OVERVIEW_ZOOM_SCALE);
-        if (on) {
-            document.body.classList.add('is-canvas-overview-zoom');
-            wrap.classList.add('is-overview-active');
+        const scaled = _zoom !== 1;
+        document.body.classList.toggle('is-canvas-overview-zoom', scaled);
+        wrap.classList.toggle('is-overview-active', scaled);
+        canvas.classList.toggle('is-overview-zoom', scaled);
+        canvas.style.setProperty('--canvas-overview-scale', String(_zoom));
+        if (scaled) {
+            const dim = Math.round(CANVAS_LOGICAL_PX * _zoom);
             wrap.style.width  = dim + 'px';
             wrap.style.height = dim + 'px';
-            canvas.classList.add('is-overview-zoom');
         } else {
-            document.body.classList.remove('is-canvas-overview-zoom');
-            wrap.classList.remove('is-overview-active');
             wrap.style.width  = '';
             wrap.style.height = '';
-            canvas.classList.remove('is-overview-zoom');
         }
+        const label = document.getElementById('canvas-zoom-level');
+        if (label) label.textContent = Math.round(_zoom * 100) + '%';
+        document.getElementById('btn-canvas-overview-zoom')
+            ?.classList.toggle('is-active', scaled);
+    }
+
+    function _redrawZoomDependents() {
         const jid = new Set();
         (State.joins || []).forEach(j => {
             jid.add(j.fromTableId);
@@ -3040,6 +3060,36 @@ const Canvas = (() => {
             if (typeof Joins !== 'undefined') Joins.redrawForTable(id);
         });
         if (typeof Islands !== 'undefined') Islands.redrawPositions?.();
+        if (typeof Minimap !== 'undefined') {
+            if (Minimap.scheduleUpdate) Minimap.scheduleUpdate();
+            else Minimap.update?.();
+        }
+    }
+
+    /** Zoom the canvas around a screen point. Omit the point to use the viewport centre. */
+    function _setZoom(next, clientX, clientY, opts) {
+        const wrapper = document.getElementById('canvas-wrapper');
+        if (!wrapper) return;
+        const prev = _zoom;
+        let z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next));
+        z = Math.round(z * 100) / 100;
+        if (Math.abs(z - prev) < 0.001) return;
+        const rect = wrapper.getBoundingClientRect();
+        const ax = clientX == null ? rect.left + rect.width / 2 : clientX;
+        const ay = clientY == null ? rect.top + rect.height / 2 : clientY;
+        const ox = ax - rect.left + wrapper.scrollLeft;
+        const oy = ay - rect.top + wrapper.scrollTop;
+        _zoom = z;
+        _paintZoom();
+        wrapper.scrollLeft = (ox / prev) * z - (ax - rect.left);
+        wrapper.scrollTop  = (oy / prev) * z - (ay - rect.top);
+        if (!opts?.silent) _redrawZoomDependents();
+    }
+
+    function setOverviewZoom(on) {
+        _zoom = on ? OVERVIEW_ZOOM_SCALE : 1;
+        _paintZoom();
+        _redrawZoomDependents();
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 _scrollToActiveIslandTop();

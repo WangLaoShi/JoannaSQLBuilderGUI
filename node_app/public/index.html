@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SQL Joiner</title>
-    <link rel="stylesheet" href="assets/css/app.css">
+    <title>SQL Joiner __APP_VERSION__</title>
+    <link rel="stylesheet" href="assets/css/app.css?v=canvas19">
     <link rel="icon" type="image/png" href="assets/img/logo.png">
 </head>
 <body>
@@ -18,16 +18,12 @@
             <div class="topbar-menu" id="topbar-menu">
                 <button id="btn-menu-trigger" title="More options">⋯</button>
                 <ul class="topbar-menu-dropdown" id="topbar-menu-dropdown">
-                    <li id="btn-new-context-shortcut" title="Save as a new context">+ New</li>
+                    <li id="btn-new-context-shortcut" title="Clear the canvas and start a new context">+ New context</li>
                     <li id="btn-load-csv" title="Load a CSV file into the results table">📂 CSV</li>
                     <li id="btn-load-xlsx" title="Load an XLSX file into the results table">📂 XLSX</li>
                     <li class="menu-sep"></li>
-                    <li id="btn-manage-profiles">⚙ Profiles</li>
-                    <li id="menu-test-connection">↯ Test Connection</li>
-                    <li class="menu-sep"></li>
-                    <li id="menu-show-shortcuts">⌨ Shortcuts</li>
-                    <li class="menu-sep"></li>
-                    <li id="menu-about">(: About</li>
+                    <li id="btn-manage-profiles" title="Add a database connection">⚙ New connection</li>
+                    <li id="menu-test-connection" title="Test the current connection">↯ Test Connection</li>
                 </ul>
             </div>
             <input type="file" id="csv-file-input" accept=".csv" style="display:none">
@@ -62,13 +58,15 @@
                 <button id="canvas-search-clear" title="Clear search">✕</button>
             </div>
             <span id="topbar-notes-title"></span>
+            <button type="button" id="menu-show-shortcuts" title="Keyboard shortcuts">⌨ Shortcuts</button>
+            <button type="button" id="menu-about" title="About">(: About</button>
         </div>
         <div id="app-logo-wrapper">
             <div style="display: none;">
-                <div><span id="app-name">SQL Joiner</span> <span id="app-version"></span></div>
+                <div><span id="app-name">SQL Joiner</span> <span id="app-version">__APP_VERSION__</span></div>
             </div>
-            <img src="assets/img/logo.png" title="SQL Joiner " id="app-logo">
-            <div id="app-logo-label">SQL Joiner</div>
+            <img src="assets/img/logo.png" title="SQL Joiner __APP_VERSION__" id="app-logo">
+            <div id="app-logo-label">SQL Joiner <span id="app-version-label">__APP_VERSION__</span></div>
         </div>
     </header>
 
@@ -115,6 +113,12 @@
         </aside>
 
         <!-- CENTER: Visual Canvas -->
+        <div id="canvas-stage">
+            <div id="canvas-zoom-controls" title="Zoom the canvas. Hold the middle button and drag up or down. Ctrl and the wheel does the same.">
+                <button type="button" id="btn-canvas-zoom-out" title="Zoom out the canvas">−</button>
+                <span id="canvas-zoom-level">100%</span>
+                <button type="button" id="btn-canvas-zoom-in" title="Zoom in the canvas">+</button>
+            </div>
         <section id="canvas-wrapper">
             <div id="canvas-scale-wrap">
             <div id="canvas">
@@ -132,6 +136,7 @@
             </div>
             <div id="canvas-hint">Double-click a table in the sidebar to add it to the canvas</div>
         </section>
+        </div>
 
         <!-- RIGHT: Query Config Panel -->
         <aside id="config-panel">
@@ -224,7 +229,7 @@
                     </label>
                     <label title="Insert '|||' between each table's columns in the SELECT list">
                         <input type="checkbox" id="select-delimiter-toggle" checked>
-                        Table delimiter <code>'|||'</code>
+                        Table delimiter
                     </label>
                     <label id="label-table-name-toggle" title="Show the real table origin (db.table) below each result column header">
                         <input type="checkbox" id="select-table-name-toggle">
@@ -1050,7 +1055,7 @@
 
     <!-- ==================== MODAL: Shortcuts ==================== -->
     <div id="modal-shortcuts" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-shortcuts-title">
-        <div class="modal-box modal-box--small">
+        <div class="modal-box modal-box--shortcuts">
             <div class="modal-header">
                 <h2 id="modal-shortcuts-title">Keyboard Shortcuts</h2>
                 <button class="modal-close" aria-label="Close">✕</button>
@@ -1069,7 +1074,7 @@
                     <li><kbd>F9</kbd> <span>Toggle Config (right) panel show / hide</span></li>
                     <li><kbd>Cmd/Ctrl</kbd> + <kbd>F9</kbd> <span>Open Run Custom Query</span></li>
                     <li><kbd>F11</kbd> / <kbd>Cmd/Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>F</kbd> <span>Toggle full screen</span></li>
-                    <li><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>T</kbd> <span>New tab (add <kbd>Shift</kbd> to reopen the last closed tab)</span></li>
+                    <li><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>T</kbd> <span>New tab (hold Shift to reopen the last closed tab)</span></li>
                     <li><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>W</kbd> / <kbd>D</kbd> <span>Close / duplicate tab</span></li>
                     <li><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>←</kbd> / <kbd>→</kbd> / <kbd>1</kbd>–<kbd>9</kbd> <span>Previous / next / jump to tab</span></li>
                     <li><kbd>Cmd/Ctrl</kbd> + <kbd>F8</kbd> <span>Explain custom query (popup must be open)</span></li>
@@ -1093,7 +1098,7 @@
                     <li><kbd>Alt</kbd> + <kbd>T</kbd> <span>Maximize / restore active popup (or results panel when no popup is open)</span></li>
                     <li><kbd>Alt</kbd> + <kbd>G</kbd> <span>Focus SELECT column search</span></li>
                     <li><kbd>Alt</kbd> + <kbd>E</kbd> <span>Focus Table Browser search — or open Edit Subquery popup when a subquery textarea is focused — or close Edit Subquery popup when its textarea is focused (cursor &amp; scroll position preserved)</span></li>
-                    <li><kbd>Alt</kbd> + <kbd>L</kbd> <span>Load a <code>.sql</code> or <code>.csv</code> file into the focused subquery textarea (replaces existing content)</span></li>
+                    <li><kbd>Alt</kbd> + <kbd>L</kbd> <span>Load a .sql or .csv file into the focused subquery textarea (replaces existing content)</span></li>
                     <li><kbd>Alt</kbd> + <kbd>A</kbd> <span>Add table to canvas by schema.table name (island colored yellow)</span></li>
                     <li><kbd>Alt</kbd> + <kbd>S</kbd> <span>Add SubQuery table to canvas and focus its textarea</span></li>
                     <li><kbd>Alt</kbd> + <kbd>I</kbd> <span>Open Import Query popup</span></li>

@@ -966,7 +966,11 @@ const App = (() => {
 
             const countSpan = document.createElement('span');
             countSpan.className   = 'tl-rows';
-            countSpan.textContent = _fmtRows(rows);
+            const profileType = document.getElementById('profile-select')?.selectedOptions?.[0]?.dataset.type || 'mysql';
+            countSpan.textContent = (profileType === 'sqlite' ? '' : '~') + _fmtRows(rows);
+            if (profileType !== 'sqlite') {
+                countSpan.title = 'From MySQL information_schema.TABLES.TABLE_ROWS, not a live SELECT COUNT(*). InnoDB stores an estimate, so it is normal for this number to differ from the row count in the results below.';
+            }
 
             const copyBtn = document.createElement('button');
             copyBtn.className   = 'tl-copy-btn';
@@ -994,6 +998,7 @@ const App = (() => {
             list.appendChild(li);
         });
 
+        if (window.I18n) I18n.apply(list);
         _refilterSidebar();
     }
 
@@ -1414,6 +1419,8 @@ const App = (() => {
         State.islandNames[newIslandKey] = sourceName ? sourceName + ' (copy)' : '';
         const sourceColor = State.islandColors[islandKey] ?? null;
         if (sourceColor) State.islandColors[newIslandKey] = sourceColor;
+        if (!State.islandNotesDetail || Array.isArray(State.islandNotesDetail)) State.islandNotesDetail = {};
+        if (State.islandNotesDetail[islandKey]) State.islandNotesDetail[newIslandKey] = State.islandNotesDetail[islandKey];
 
         // Render cards
         _updateCanvasCount();
@@ -1994,6 +2001,27 @@ const App = (() => {
      * Called by Islands when the island composition changes (merge or split).
      * Handles config inheritance so data is never lost.
      */
+    function _noteBag() {
+        if (!State.islandNotesDetail || Array.isArray(State.islandNotesDetail)) State.islandNotesDetail = {};
+        return State.islandNotesDetail;
+    }
+
+    function _carryIslandNote(absorbedKeys, newKey) {
+        const bag = _noteBag();
+        const parts = absorbedKeys.map(k => (bag[k] || '').trim()).filter(Boolean);
+        if (parts.length && !bag[newKey]) bag[newKey] = parts.join('<p><br></p>');
+        absorbedKeys.forEach(k => { if (k !== newKey) delete bag[k]; });
+    }
+
+    function _keepIslandNoteOnLargest(prevKey, fragments) {
+        const bag = _noteBag();
+        const note = bag[prevKey];
+        if (!note) return;
+        const largest = fragments.slice().sort((a, b) => b.split('|').length - a.split('|').length)[0];
+        if (largest && !bag[largest]) bag[largest] = note;
+        delete bag[prevKey];
+    }
+
     function onIslandTransition(prevKeys, newKeys) {
         const prevSet = new Set(prevKeys);
         const newSet  = new Set(newKeys);
@@ -2007,6 +2035,7 @@ const App = (() => {
             const absorbed  = removed.filter(k => k.split('|').every(id => newIds.has(id)));
             if (absorbed.length > 0) {
                 _mergeIslandConfigs(absorbed, newKey);
+                _carryIslandNote(absorbed, newKey);
             }
             // If nothing absorbed → truly new island; config will be lazily created on first blit
         });
@@ -2017,6 +2046,7 @@ const App = (() => {
             const fragments = newKeys.filter(k => k.split('|').every(id => prevIds.has(id)));
             if (fragments.length > 1) {
                 _splitIslandConfig(prevKey, fragments);
+                _keepIslandNoteOnLargest(prevKey, fragments);
             }
         });
 
@@ -4054,7 +4084,11 @@ const App = (() => {
             });
 
         document.getElementById('btn-manage-profiles')
-            .addEventListener('click', () => Modals.openProfiles());
+            .addEventListener('click', () => {
+                _menuEl.classList.remove('is-open');
+                Modals.openProfiles();
+                if (typeof Profiles !== 'undefined') Profiles.clearForm();
+            });
 
         document.getElementById('btn-show-notes')
             .addEventListener('click', () => Modals.openNotes());
@@ -4343,19 +4377,7 @@ const App = (() => {
         // A MutationObserver resets the position to centered every time
         // the modal is re-opened (hidden class removed).
 
-        // Modals that open maximised by default (contain backdrop textareas or are
-        // the Notes modal).  The observer maximises them right after resetting the
-        // position so the timing is always correct with no extra setTimeout needed.
-        const _AUTO_MAXIMIZE = new Set([
-            'modal-notes',
-            'modal-custom-query',
-            'modal-sq-expand',
-            'modal-import-query',
-            'modal-sql',
-            'modal-create-statement',
-            'modal-about',
-        ]);
-
+        // Modals reopen centered. None of them start maximized.
         document.querySelectorAll('.modal').forEach(modal => {
             const box    = modal.querySelector('.modal-box');
             const header = box && box.querySelector('.modal-header');
@@ -4365,14 +4387,9 @@ const App = (() => {
 
             new MutationObserver(() => {
                 if (!modal.classList.contains('hidden')) {
-                    // Reset to CSS default (top:50% left:50% transform:-50%)
                     box.style.left      = '';
                     box.style.top       = '';
                     box.style.transform = '';
-                    // Auto-maximise on open for designated modals
-                    if (_AUTO_MAXIMIZE.has(modal.id) && box.dataset.maximized !== '1') {
-                        _toggleMaximizePopup(box);
-                    }
                 }
             }).observe(modal, { attributes: true, attributeFilter: ['class'] });
         });
@@ -6681,9 +6698,6 @@ const Modals = {
 
         const modal = document.getElementById('modal-pin-container');
         modal.classList.remove('hidden');
-        // Maximize on open if not already maximized
-        const box = modal.querySelector('.modal-box');
-        if (box && box.dataset.maximized !== '1') App.toggleMaximizePopup(box);
     },
 
     // ---- Plot modal ----

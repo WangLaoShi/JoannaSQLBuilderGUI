@@ -9,13 +9,19 @@
     'More options': '更多',
     'Save as a new context': '另存为新的查询场景',
     '+ New': '+ 新建',
+    '+ New context': '+ 新建场景',
+    'Clear the canvas and start a new context': '清空画布，开始一个新场景',
     'Load a CSV file into the results table': '把 CSV 载入结果表',
     '📂 CSV': '📂 CSV',
     'Load an XLSX file into the results table': '把 XLSX 载入结果表',
     '📂 XLSX': '📂 XLSX',
     '⚙ Profiles': '⚙ 连接',
+    '⚙ New connection': '⚙ 新建连接',
+    'Add a database connection': '新建一个数据库连接',
+    'Test the current connection': '测试当前连接',
     '↯ Test Connection': '↯ 测试连接',
     '⌨ Shortcuts': '⌨ 快捷键',
+    'Keyboard shortcuts': '快捷键',
     '(: About': '(: 关于',
     'Save/Load previously copied context': '保存或打开以前的查询场景',
     '🗂 Contexts': '🗂 场景',
@@ -65,6 +71,21 @@
     '▶ Run Query': '▶ 运行查询',
     'Generated SQL query': '生成的 SQL',
     '-- Add tables to the canvas to begin': '-- 把数据表拖到画布上开始',
+    '-- Multiple disconnected table groups found.\n-- Select one group to query.': '-- 有多组互不相连的表。\n-- 请先选定一组再查询。',
+    '⊙± Diff cols': '⊙± 比较列',
+    'Set-diff chosen columns against the next query or a CSV (array_diff / intersect / union)': '用选中的列和下一次查询或一份 CSV 做差集、交集、并集',
+    'Sort A→Z': '按名称排序',
+    'Sort SELECT columns alphabetically by column name in the query (UI order unchanged)': '查询里的字段按名称排序，右侧列表的顺序不变',
+    'Table delimiter': '表间分隔',
+    'Rec': '记录',
+    '⊶ TL': '⊶ 时间线',
+    'Query Recordings — left-click to open, right-click to toggle recording': '查询记录：左键打开，右键开始或停止记录',
+    "Insert '|||' between each table's columns in the SELECT list": "在每张表的字段之间插入 '|||'",
+    'DB Table Name': '显示表名',
+    'Show the real table origin (db.table) below each result column header': '在结果列表头下方显示库名和表名',
+    'DB Schema Alias': '显示别名',
+    'Show table alias prefix in result column headers (e.g. u.id → checked, id → unchecked)': '结果列表头带上表别名。勾选后是 u.id，取消后只显示 id',
+    'DISTINCT': '去重',
     'Cell': '单元格',
     'Header': '表头',
     'Compare cell values': '比较单元格',
@@ -175,8 +196,10 @@
   }
 
   const PATTERNS = [
-    [/^Close (.+?)\?\n\nAll (\d+) tables? will be removed from the canvas\.$/, m =>
-      `关闭${_name(m[1], 'this island', '这一组')}？\n\n画布上的 ${m[2]} 张表都会被移走。`],
+    [/^Close (.+?)\?\n\nAll (\d+) tables? will be removed from the canvas\.$/, m => {
+      const name = m[1] === 'this island' ? '这一组' : `「${m[1]}」`;
+      return `关闭${name}？\n\n其中的 ${m[2]} 张表将从画布上移除。`;
+    }],
     [/^The CSV contains ([\d,]+) rows\. Load anyway\?$/, m =>
       `这份 CSV 有 ${m[1]} 行。仍然载入吗？`],
     [/^A saved context named "([\s\S]+)" already exists\.\n\nDo you want to overwrite it with the current state\?$/, m =>
@@ -251,6 +274,10 @@
       `时间线上已经有：${m[1]}`],
     [/^Timeline "([\s\S]+)" saved\.$/, m =>
       `时间线「${m[1]}」已保存。`],
+    [/^This will ADD a new island to the canvas with the imported query\.\n\nTables found: (.+)\nJoins found: (\d+)\n\nContinue\?$/, m =>
+      `这会在画布上新增一组，放进导入的查询。\n\n找到的表：${m[1] === 'none' ? '没有' : m[1]}\n找到的连接：${m[2]}\n\n继续吗？`],
+    [/^This will CLEAR all current canvas tables, joins, and query conditions, then apply the imported query\.\n\nTables found: (.+)\nJoins found: (\d+)\n\nContinue\?$/, m =>
+      `这会清空画布上现有的表、连接和查询条件，再放进导入的查询。\n\n找到的表：${m[1] === 'none' ? '没有' : m[1]}\n找到的连接：${m[2]}\n\n继续吗？`],
   ];
 
   function t(text) {
@@ -272,10 +299,56 @@
     if (lang() !== 'zh') return src;
     const match = src.match(/^(\s*)([\s\S]*?)(\s*)$/);
     if (!match) return src;
+    const lead = match[1];
     const phrase = match[2];
-    const zh = phrase === src ? null : t(phrase);
-    const translated = zh == null ? t(src) : (zh === phrase ? src : match[1] + zh + match[3]);
-    return translated;
+    const tail = match[3];
+    const zh = t(phrase);
+    if (zh !== phrase) return lead + zh + tail;
+    // A key that itself has surrounding spaces still matches the raw node.
+    if (phrase !== src) {
+      const whole = t(src);
+      if (whole !== src) return whole;
+    }
+    return src;
+  }
+
+  const PREVIEW_PHRASES = [
+    '-- Add tables to the canvas to begin',
+    '-- Multiple disconnected table groups found.\n-- Select one group to query.',
+  ];
+
+  function previewZh(source) {
+    return Object.prototype.hasOwnProperty.call(DICT, source) ? DICT[source] : source;
+  }
+
+  // The SQL bar is skipped so a query is never rewritten. These two messages
+  // are the whole text of that bar, so they can still be translated.
+  function translatePreview() {
+    const el = document.getElementById('sql-preview-text');
+    if (!el) return;
+    const current = el.textContent;
+    const marked = el.getAttribute('data-i18n-preview');
+    let source = null;
+    if (PREVIEW_PHRASES.includes(current)) source = current;
+    else if (marked && PREVIEW_PHRASES.includes(marked) && (current === marked || current === previewZh(marked))) source = marked;
+    if (!source) {
+      el.removeAttribute('data-i18n-preview');
+      return;
+    }
+    el.setAttribute('data-i18n-preview', source);
+    const next = lang() === 'zh' ? previewZh(source) : source;
+    if (el.textContent !== next) el.textContent = next;
+  }
+
+  let previewScheduled = false;
+  let again = false;
+  function schedulePreview() {
+    if (previewScheduled || applying) return;
+    previewScheduled = true;
+    requestAnimationFrame(() => {
+      previewScheduled = false;
+      translatePreview();
+    });
   }
 
   function skipText(parent) {
@@ -288,8 +361,10 @@
 
   function apply(root) {
     root = root || document.body;
-    if (!root || applying) return;
+    if (!root) return;
+    if (applying) { again = true; return; }
     if (root.nodeType !== 1) root = root.parentElement || document.body;
+    if (root !== document.body && !root.isConnected) root = document.body;
     applying = true;
     observer?.disconnect();
     try {
@@ -301,12 +376,15 @@
         const parent = node.parentElement;
         if (!parent || skipText(parent)) continue;
         if (!originals.has(node)) originals.set(node, node.nodeValue);
+        const phrase = String(originals.get(node)).trim();
+        // A <code>SELECT</code> is the keyword. The same word on a panel label is "SELECT 字段".
+        if (parent.closest('code') && /^(SELECT|UNION ALL|NULL|AND|OR|FROM|WHERE|JOIN|AS|ON|DISTINCT)$/.test(phrase)) continue;
         const next = translateRaw(originals.get(node));
         if (node.nodeValue !== next) node.nodeValue = next;
       }
       root.querySelectorAll('[title],[placeholder],[aria-label]').forEach(el => {
         if (skipAttr(el)) return;
-        for (const attr of ['title', 'placeholder', 'aria-label']) {
+        for (const attr of ['title', 'placeholder', 'aria-label', 'alt']) {
           if (!el.hasAttribute(attr)) continue;
           const store = `data-i18n-${attr}`;
           if (!el.hasAttribute(store)) el.setAttribute(store, el.getAttribute(attr));
@@ -317,20 +395,34 @@
       const btn = document.getElementById('btn-lang');
       const label = lang() === 'zh' ? '中文' : 'EN';
       if (btn && btn.textContent !== label) btn.textContent = label;
+      translatePreview();
     } finally {
       applying = false;
       if (observer && document.body) {
-        observer.observe(document.body, { childList: true, subtree: true });
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+          attributes: true,
+          attributeFilter: ['placeholder', 'title', 'aria-label', 'alt'],
+        });
+      }
+      if (again) {
+        again = false;
+        schedule(document.body);
       }
     }
   }
 
   function schedule(root) {
+    if (root && root.nodeType !== 1) root = root.parentElement;
+    if (!root || (root !== document.body && !root.isConnected)) root = document.body;
     if (!schedule.target) schedule.target = root;
     else if (schedule.target !== root) schedule.target = document.body;
-    if (scheduled || applying) return;
+    if (applying) { again = true; return; }
+    if (scheduled) return;
     scheduled = true;
-    requestAnimationFrame(() => {
+    queueMicrotask(() => {
       scheduled = false;
       const target = schedule.target || document.body;
       schedule.target = null;
@@ -355,16 +447,36 @@
     apply(document.body);
     window.addEventListener('load', () => apply(document.body));
     observer = new MutationObserver(records => {
-      if (applying) return;
+      if (applying) { again = true; return; }
       for (const record of records) {
+        if (record.type === 'characterData' || record.type === 'attributes') {
+          const el = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+          if (!el || el.id === 'btn-lang' || el.closest?.('#results-table,script,style,.toast')) continue;
+          if (el.id === 'sql-preview-text' || el.closest?.('#sql-preview-text')) {
+            schedulePreview();
+            continue;
+          }
+          schedule(el);
+          continue;
+        }
         for (const node of record.addedNodes) {
           const el = node.nodeType === 1 ? node : node.parentElement;
-          if (!el || el.id === 'btn-lang' || el.closest?.('#results-table,#sql-preview-text,script,style')) continue;
+          if (!el || el.id === 'btn-lang' || el.closest?.('#results-table,script,style')) continue;
+          if (el.id === 'sql-preview-text' || el.closest?.('#sql-preview-text')) {
+            schedulePreview();
+            continue;
+          }
           schedule(el);
         }
       }
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['placeholder', 'title', 'aria-label', 'alt'],
+    });
   }
 
   window.I18n = { t, apply, lang, dict: DICT };

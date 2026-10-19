@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp, publicDir } from './app.js';
 import { HttpError } from './errors.js';
+import { APP_VERSION } from './version.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,7 +21,11 @@ const MIME = {
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
   const payload = typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body);
-  res.writeHead(status, { 'Content-Type': type, 'Access-Control-Allow-Origin': '*' });
+  res.writeHead(status, {
+    'Content-Type': type,
+    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'no-store',
+  });
   res.end(payload);
 }
 
@@ -86,7 +91,11 @@ export function startServer({ port = 4173, storageDir, host = '127.0.0.1' } = {}
         return;
       }
       const type = MIME[path.extname(file)] || 'application/octet-stream';
-      send(res, 200, fs.readFileSync(file), type);
+      let body = fs.readFileSync(file);
+      if (file.endsWith(`${path.sep}index.html`) || file.endsWith(`${path.sep}shell.html`)) {
+        body = body.toString('utf8').replaceAll('__APP_VERSION__', APP_VERSION);
+      }
+      send(res, 200, body, type);
     } catch (err) {
       const status = err instanceof HttpError ? err.status : 500;
       send(res, status, { success: false, message: err.message || 'Server error.', data: null });

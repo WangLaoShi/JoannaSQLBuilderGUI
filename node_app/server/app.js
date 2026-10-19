@@ -8,10 +8,11 @@ import { openDb, projectResult } from './db.js';
 import { assembleQuery, containsVariables } from './query-sql.js';
 import { parseSql } from './query-parser.js';
 import * as schema from './schema.js';
+import { APP_NAME, APP_VERSION } from './version.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-const ABOUT = `SQL Joiner (Node)
+const ABOUT = `${APP_NAME} ${APP_VERSION}
 
 This is a graphical interpretation of debugging/processing SQL queries.
 

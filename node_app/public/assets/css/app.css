@@ -326,6 +326,9 @@ h3 {
     text-align: center;
     letter-spacing: 0.3px;
 }
+#app-version-label {
+    display: block;
+}
 
 /* =============================================================================
    5. Main Layout (3-column)
@@ -667,10 +670,16 @@ body.is-resizing * { user-select: none !important; }
 /* =============================================================================
    7. Center — Visual Canvas
    ============================================================================= */
-#canvas-wrapper {
+#canvas-stage {
     flex: 1;
-    overflow: auto;        /* scrollable — canvas is 5000×5000 */
     position: relative;
+    min-width: 0;
+    min-height: 0;
+}
+#canvas-wrapper {
+    position: absolute;
+    inset: 0;
+    overflow: auto;        /* scrollable — canvas is 5000×5000 */
     background: var(--bg);
     cursor: grab;
 }
@@ -685,11 +694,41 @@ body.is-resizing * { user-select: none !important; }
 }
 /* also see canvas.js // const OVERVIEW_ZOOM_SCALE = 0.60; */
 #canvas.is-overview-zoom {
-    transform: scale(var(--canvas-overview-scale, 0.7));
+    transform: scale(var(--canvas-overview-scale, 1));
     transform-origin: 0 0;
 }
-body.is-canvas-overview-zoom {
-    --canvas-overview-scale: 0.7;
+
+#canvas-zoom-controls {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(22, 24, 28, 0.92);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+}
+#canvas-zoom-controls button {
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+}
+#canvas-zoom-controls button:hover { background: var(--surface3); }
+#canvas-zoom-level {
+    min-width: 42px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-dim, var(--text));
 }
 
 #canvas {
@@ -879,7 +918,7 @@ body.is-canvas-overview-zoom {
 /* Join type labels rendered as SVG <text> at bezier midpoints */
 .join-label {
     font-family:    var(--font);
-    font-size:      10px;
+    font-size:      15px;
     font-weight:    600;
     fill:           var(--text-muted);
     text-anchor:    middle;
@@ -1136,12 +1175,12 @@ body.is-canvas-overview-zoom {
 .island-label-input {
     flex: 1;
     min-width: 0;
-    height: 18px;
+    height: 24px;
     background: transparent;
     border: none;
     border-bottom: 1px solid transparent;
     color: rgba(255, 255, 255, 0.45);
-    font-size: 11px;
+    font-size: 15px;
     font-family: inherit;
     padding: 0 4px;
     outline: none;
@@ -1158,6 +1197,63 @@ body.is-canvas-overview-zoom {
     color: rgba(255, 255, 255, 0.18);
     font-style: italic;
 }
+
+/* Group note — rich text under the island title. Grows the frame upward. */
+.island-note-block {
+    position: absolute;
+    top: 34px;
+    left: 10px;
+    right: 10px;
+    z-index: 3;
+    pointer-events: all;
+}
+.island-note-toolbar {
+    display: none;
+    gap: 4px;
+    margin-bottom: 4px;
+}
+.island-note-block:focus-within .island-note-toolbar { display: flex; }
+.island-note-toolbar button {
+    height: 22px;
+    min-width: 22px;
+    padding: 0 6px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.25);
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 12px;
+    cursor: pointer;
+}
+.island-note-toolbar button:hover { border-color: rgba(255, 255, 255, 0.45); }
+.island-note {
+    min-height: 28px;
+    max-height: 140px;
+    overflow: auto;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.22);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 14px;
+    line-height: 1.45;
+    outline: none;
+    cursor: text;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.island-note:focus { background: rgba(0, 0, 0, 0.38); }
+.island-note ul,
+.island-note ol { margin: 2px 0 2px 1.1em; padding: 0; }
+.island-note-placeholder {
+    position: absolute;
+    left: 8px;
+    top: 4px;
+    color: rgba(255, 255, 255, 0.32);
+    font-size: 14px;
+    font-style: italic;
+    pointer-events: none;
+}
+.island-note-block:focus-within .island-note-placeholder,
+.island-note-block.has-text .island-note-placeholder { display: none; }
 
 /* Island background color dot — sits at the right of the header */
 .island-color-dot {
@@ -1416,10 +1512,11 @@ body.is-canvas-overview-zoom {
     color: #fff;
 }
 .modal-chart-board-box {
-    width: min(1120px, 96vw);
-    min-width: min(1120px, 96vw);
-    max-width: 96vw;
-    max-height: 92vh;
+    width: min(880px, 94vw);
+    max-width: 94vw;
+    height: min(720px, 86vh);
+    min-height: 420px;
+    max-height: 86vh;
 }
 .modal-chart-board-body {
     display: flex;
@@ -1616,8 +1713,9 @@ body.is-canvas-overview-zoom {
 
 /* Pin container popup modal */
 .modal-pin-container-box {
-    width: 760px;
-    max-width: 95vw;
+    width: min(760px, 94vw);
+    min-height: 420px;
+    max-height: 80vh;
 }
 .modal-pin-container-body {
     display: flex;
@@ -1685,7 +1783,7 @@ body.is-canvas-overview-zoom {
    ============================================================================= */
 .table-card {
     position: absolute;
-    width: 200px;
+    width: 260px;
     display: flex;
     flex-direction: column;
     background: var(--surface);
@@ -1906,8 +2004,8 @@ body.is-card-resizing-b  * { cursor: s-resize    !important; user-select: none !
 
 .table-card__order {
     flex-shrink: 0;
-    width: 40px;
-    font-size: 11px;
+    width: 48px;
+    font-size: 15px;
     padding: 2px 2px;
     border-radius: 4px;
     border: 1px solid var(--border);
@@ -2046,7 +2144,7 @@ body.is-cut-mode * { cursor: crosshair !important; }
 
 /* Bottom row: full table name (always visible, its own block line) */
 .table-card__tname {
-    font-size: 11px;
+    font-size: 16px;
     font-weight: 600;
     color: var(--text);
     /* Allow long table names to fully display instead of being ellipsized. */
@@ -2057,7 +2155,7 @@ body.is-cut-mode * { cursor: crosshair !important; }
 
 .table-card__rowcount {
     margin-left: auto;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-faint);
     background: var(--surface3);
     padding: 1px 5px;
@@ -2070,7 +2168,7 @@ body.is-cut-mode * { cursor: crosshair !important; }
     display: flex;
     align-items: center;
     gap: 2px;
-    font-size: 11px;
+    font-size: 15px;
     color: var(--accent);
     flex-shrink: 1;
     min-width: 0;
@@ -2081,9 +2179,9 @@ body.is-cut-mode * { cursor: crosshair !important; }
     background: transparent;
     border: 1px solid transparent;
     color: var(--accent);
-    font-size: 11px;
+    font-size: 15px;
     font-family: var(--font-mono);
-    width: 20px;
+    width: 44px;
     min-width: 0;
     box-sizing: border-box;
     padding: 1px 2px;
@@ -2278,8 +2376,8 @@ body.is-cut-mode * { cursor: crosshair !important; }
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 4px 8px;
-    font-size: 11px;
+    padding: 7px 10px;
+    font-size: 16px;
     border-bottom: 1px solid var(--border);
     gap: 6px;
     cursor: grab;
@@ -2347,7 +2445,7 @@ body.is-cut-mode * { cursor: crosshair !important; }
 }
 
 .table-card__col-type {
-    font-size: 10px;
+    font-size: 13px;
     color: var(--text-faint);
     font-family: var(--font-mono);
     flex-shrink: 0;
@@ -5857,8 +5955,34 @@ th.calc-nop { opacity: 0.1; font-weight: bold; }
     box-shadow: 0 8px 32px rgba(0,0,0,0.6);
 }
 .modal-box--small { width: 320px; }
+#modal-shortcuts .modal-box--shortcuts {
+    width: min(820px, 92vw);
+    max-height: 88vh;
+}
+#modal-shortcuts .shortcuts-list li {
+    align-items: baseline;
+    gap: 20px;
+}
+#modal-shortcuts .shortcuts-list li > span:last-child {
+    flex: 1;
+    margin-left: 12px;
+    line-height: 1.5;
+    text-align: left;
+}
+#modal-shortcuts .form-actions { justify-content: flex-end; }
 /* Diff CSV modal */
-#modal-diff-csv .modal-box { width: 440px; }
+#modal-join .modal-box,
+#modal-value-editor .modal-box { width: min(520px, 92vw); }
+#modal-about .modal-box {
+    width: min(680px, 92vw);
+    height: min(640px, 80vh);
+}
+#modal-about #about-content {
+    flex: 1;
+    min-height: 0;
+    resize: none;
+}
+#modal-about .form-actions { justify-content: flex-end; }
 .diff-csv-info { font-size: 12px; color: var(--text-muted, #888); margin-bottom: 10px; min-height: 16px; }
 .diff-csv-b { border: 1px solid var(--border, #444); border-radius: 4px; padding: 10px 12px; margin-bottom: 10px; }
 .diff-csv-b-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
@@ -5894,6 +6018,7 @@ th.calc-nop { opacity: 0.1; font-weight: bold; }
 .modal-box--large { width: 800px; max-width: 90vw; height: 75vh; resize: both; min-width: 420px; min-height: 260px; }
 .modal-box--notes { width: 660px; max-width: 90vw; height: 560px; min-width: 320px; min-height: 220px; resize: both; overflow: hidden; display: flex; flex-direction: column; }
 .modal-box--notes .modal-body { display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 0; }
+.modal-box--notes .form-actions { justify-content: flex-end; }
 .modal-box--calculus-note { width: 660px; max-width: 90vw; height: 560px; min-width: 320px; min-height: 220px; resize: both; overflow: hidden; display: flex; flex-direction: column; }
 .modal-box--calculus-note .modal-body { display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 0; }
 .modal-box--where-from-json { width: 560px; max-width: 92vw; height: 380px; min-height: 260px; resize: both; overflow: hidden; display: flex; flex-direction: column; }
@@ -5901,7 +6026,23 @@ th.calc-nop { opacity: 0.1; font-weight: bold; }
 .modal-box--where-from-json .modal-body .modal-hint { flex-shrink: 0; }
 .modal-box--where-from-json .modal-body .form-actions { flex-shrink: 0; }
 .modal-box--custom-query { width: 720px; max-width: 92vw; height: 75vh; resize: both; min-width: 420px; min-height: 260px; position: relative; }
-.modal-box--context { width: 80vw; max-width: 80vw; max-height: 80vh; }
+.modal-box--context {
+    width: min(560px, 92vw);
+    max-width: 92vw;
+    height: min(640px, 80vh);
+    min-height: 380px;
+}
+.modal-box--context .modal-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+#ctx-saved-list {
+    flex: 1;
+    min-height: 160px;
+    overflow-y: auto;
+}
 .modal-box--large .modal-body,
 .modal-box--custom-query .modal-body {
     display: flex;
@@ -6579,7 +6720,7 @@ kbd {
     border-radius: 3px;
     color: var(--text);
     font-family: monospace;
-    font-size: 11px;
+    font-size: 15px;
     line-height: 1.5;
     min-height: 160px;
     outline: none;

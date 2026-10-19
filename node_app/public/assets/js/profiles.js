@@ -92,6 +92,7 @@ const Profiles = (() => {
         _cache.forEach(p => {
             const opt       = document.createElement('option');
             opt.value       = p.id;
+            opt.dataset.type = p.type || 'mysql';
             opt.textContent = p.name;
             sel.appendChild(opt);
         });

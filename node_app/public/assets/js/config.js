@@ -1069,6 +1069,7 @@ const QueryPanel = (() => {
         _applyExprModeToCheckboxes(mode);
 
         _filterSelectColumns();
+        if (window.I18n) I18n.apply(container);
     }
 
     // -------------------------------------------------------------------------
