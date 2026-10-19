@@ -43,8 +43,7 @@
 - 场景、关于、连接编辑等窗口按内容给了固定的宽和高，不再默认铺满屏幕。
 - 每一组标题下面可以写富文本说明，单张表也有。支持加粗、斜体和列表。字变多时外框向上长高，里面的表不动。说明跟场景一起保存。
 - 画布单独缩放，大约 50% 到 200%。按住中键上下拖，或按住 Ctrl 再滚动滚轮，或点画布右上角的 −、百分比、+。侧栏、菜单和结果面板不跟着放大。普通滚轮仍然只滚动画布。打开时仍先停在 70% 总览。
-
-## 运行
+- 推送标签 `v` 加版本号后，GitHub Actions 在 macOS 上打包并建立 Release。只推送 `main` 时只跑测试。
 
 ## 运行
 
@@ -69,28 +68,35 @@ npm run desktop
 
 ## 版本
 
-版本号只写在 `node_app/package.json` 的 `version`。页面标题、右上角、关于窗口、保存的场景，以及安装包文件名都读这个号。当前源码版本是 1.1.1。要发布新版本，先改这个号，再执行下面的打包命令。`dist/` 里已经打好的安装包仍是 1.0.0 的文件名，下次打包才会变成 1.1.1。
+版本号只写在 `node_app/package.json` 的 `version`。页面标题、右上角、关于窗口、保存的场景，以及安装包文件名都读这个号。当前源码版本是 1.1.1。
 
 ## 安装包
 
-在 Apple 芯片的 Mac 上可以同时打出 Mac 和 Windows 的包。包没有签名。
+发布不在本机打包。改完版本号并推送到 GitHub 后，用**和版本号相同的标签**触发 Actions。流程文件是 `.github/workflows/release.yml`。
+
+1. 把 `node_app/package.json` 的 `version` 改成要发布的号，例如 `1.1.1`，然后提交并推送 `main`。这一步只跑测试，不打安装包。
+2. 在包含该版本号的那次提交上打标签并推送。标签必须是 `v` 加版本号：
 
 ```bash
-cd node_app
-npm run pack:mac
-npm run pack:win
+git tag v1.1.1
+git push origin v1.1.1
 ```
 
-`npm run pack` 会两个都打。成品在 `node_app/dist/`：
+3. 打开仓库的 Actions。先是 Ubuntu 上的测试。测试通过后，macOS 运行 `npm run pack`，同时打出 Apple 芯片、Intel Mac 和 Windows x64 的包。包没有签名。
+4. 打包成功后，同一个 Action 建立或更新 [Release](https://github.com/WangLaoShi/JoannaSQLBuilderGUI/releases)，并把下面四个文件挂上去。文件名里的版本号就是 `package.json` 里的号。
 
 | 文件 | 给谁用 |
 |---|---|
-| `SQL Joiner-1.0.0-arm64.dmg` | Apple 芯片的 Mac |
-| `SQL Joiner-1.0.0.dmg` | Intel Mac |
-| `SQL Joiner Setup 1.0.0.exe` | Windows 安装程序 |
-| `SQL Joiner-1.0.0-win.zip` | Windows 解压后直接运行 |
+| `SQL Joiner-<版本>-arm64.dmg` | Apple 芯片的 Mac |
+| `SQL Joiner-<版本>.dmg` | Intel Mac |
+| `SQL Joiner Setup <版本>.exe` | Windows 安装程序 |
+| `SQL Joiner-<版本>-win.zip` | Windows 解压后直接运行 |
 
-Mac 第一次打开：在 Finder 里按住 Control 再点应用，选择「打开」。Windows 若出现 SmartScreen，选择「仍要运行」。
+也可以不打标签：在 GitHub 的 Actions 页选 “Check and release”，点 “Run workflow”，勾选发布 Release。它会按当前 `main` 上的 `package.json` 建立 `v<版本>` 并挂上安装包。
+
+标签和 `version` 不一致时，测试步骤会失败，不会去打包。普通 `git push` 不会产生 Release。`node_app/dist/` 不进 Git。
+
+本机仍然可以打包，供自己试装。在 `node_app` 里执行 `npm run pack`。Mac 第一次打开：在 Finder 里按住 Control 再点应用，选择「打开」。Windows 若出现 SmartScreen，选择「仍要运行」。
 
 ## 界面怎么用
 

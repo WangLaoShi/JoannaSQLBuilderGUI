@@ -352,7 +352,7 @@
   }
 
   function skipText(parent) {
-    return !!parent.closest('script,style,textarea,input,#results-table,#sql-preview-text,.toast');
+    return !!parent.closest('script,style,textarea,input,[contenteditable="true"],#results-table,#sql-preview-text,.toast');
   }
 
   function skipAttr(el) {
@@ -451,7 +451,7 @@
       for (const record of records) {
         if (record.type === 'characterData' || record.type === 'attributes') {
           const el = record.target.nodeType === 1 ? record.target : record.target.parentElement;
-          if (!el || el.id === 'btn-lang' || el.closest?.('#results-table,script,style,.toast')) continue;
+          if (!el || el.id === 'btn-lang' || el.closest?.('#results-table,script,style,.toast,[contenteditable="true"]')) continue;
           if (el.id === 'sql-preview-text' || el.closest?.('#sql-preview-text')) {
             schedulePreview();
             continue;
@@ -461,7 +461,7 @@
         }
         for (const node of record.addedNodes) {
           const el = node.nodeType === 1 ? node : node.parentElement;
-          if (!el || el.id === 'btn-lang' || el.closest?.('#results-table,script,style')) continue;
+          if (!el || el.id === 'btn-lang' || el.closest?.('#results-table,script,style,[contenteditable="true"]')) continue;
           if (el.id === 'sql-preview-text' || el.closest?.('#sql-preview-text')) {
             schedulePreview();
             continue;

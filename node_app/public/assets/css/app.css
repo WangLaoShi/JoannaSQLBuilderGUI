@@ -1198,7 +1198,9 @@ body.is-resizing * { user-select: none !important; }
     font-style: italic;
 }
 
-/* Group note — rich text under the island title. Grows the frame upward. */
+/* Group note — rich text under the island title. Grows the frame upward.
+   The toolbar's 26px is always reserved, so showing it does not push the
+   field down onto the table card (cards paint above the island frame). */
 .island-note-block {
     position: absolute;
     top: 34px;
@@ -1206,11 +1208,16 @@ body.is-resizing * { user-select: none !important; }
     right: 10px;
     z-index: 3;
     pointer-events: all;
+    padding-top: 26px;
 }
 .island-note-toolbar {
     display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
     gap: 4px;
-    margin-bottom: 4px;
+    height: 22px;
 }
 .island-note-block:focus-within .island-note-toolbar { display: flex; }
 .island-note-toolbar button {
@@ -1246,7 +1253,7 @@ body.is-resizing * { user-select: none !important; }
 .island-note-placeholder {
     position: absolute;
     left: 8px;
-    top: 4px;
+    top: 30px; /* block padding-top 26 + the note's own 4px padding */
     color: rgba(255, 255, 255, 0.32);
     font-size: 14px;
     font-style: italic;

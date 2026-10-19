@@ -579,17 +579,20 @@ const Islands = (() => {
         if (saved) note.innerHTML = _sanitizeNoteHtml(saved);
         if ((note.textContent || '').trim()) block.classList.add('has-text');
 
+        // Clicks anywhere in the note, including the padding that holds the
+        // toolbar, must not reach the island rect: that handler calls
+        // preventDefault() and the caret never lands. The table card also
+        // paints above this frame, so a covered field receives the card's click.
         const keepFocus = e => {
+            if (e.button !== 0) return;
             e.stopPropagation();
-            const was = State.selectedIslandKey === key;
+            if (State.selectedIslandKey === key) return;
             selectIsland(key);
-            if (!was) {
-                requestAnimationFrame(() => {
-                    _container?.querySelector(`.island-rect[data-island-key="${CSS.escape(key)}"] .island-note`)?.focus();
-                });
-            }
+            requestAnimationFrame(() => {
+                _container?.querySelector(`.island-rect[data-island-key="${CSS.escape(key)}"] .island-note`)?.focus();
+            });
         };
-        note.addEventListener('mousedown', keepFocus);
+        block.addEventListener('mousedown', keepFocus);
         note.addEventListener('click', e => e.stopPropagation());
         note.addEventListener('focus', () => {
             if (typeof UndoRedo !== 'undefined') UndoRedo.snapshot();
@@ -598,6 +601,15 @@ const Islands = (() => {
             e.stopPropagation();
             if (e.key === 'Escape') note.blur();
         });
+        // Moving the frame while a Chinese IME composition is open makes the
+        // browser drop and reclaim focus on every syllable.
+        let composing = false;
+        note.addEventListener('compositionstart', () => { composing = true; });
+        note.addEventListener('compositionend', () => {
+            composing = false;
+            _storeIslandNote();
+            _relayoutNoteFrame();
+        });
         note.addEventListener('paste', e => {
             e.preventDefault();
             const html = e.clipboardData?.getData('text/html');
@@ -605,16 +617,28 @@ const Islands = (() => {
             if (html) document.execCommand('insertHTML', false, _sanitizeNoteHtml(html));
             else document.execCommand('insertText', false, text);
         });
-        note.addEventListener('input', () => {
+        const _storeIslandNote = () => {
             if (!State.islandNotesDetail || Array.isArray(State.islandNotesDetail)) State.islandNotesDetail = {};
             const empty = !(note.textContent || '').replace(/\u00a0/g, ' ').trim();
             block.classList.toggle('has-text', !empty);
             State.islandNotesDetail[key] = empty ? '' : _sanitizeNoteHtml(note.innerHTML);
             if (empty) delete State.islandNotesDetail[key];
-            const ids = key.split('|');
-            const bbox = _boundingBox(ids);
+        };
+        const _relayoutNoteFrame = () => {
+            const bbox = _boundingBox(key.split('|'));
             if (bbox) _layoutIslandRect(rect, bbox, false, key);
+        };
+        note.addEventListener('input', () => {
+            _storeIslandNote();
+            if (!composing) _relayoutNoteFrame();
         });
+        if (typeof ResizeObserver !== 'undefined') {
+            const observer = new ResizeObserver(() => {
+                if (composing || !rect.isConnected) return;
+                _relayoutNoteFrame();
+            });
+            observer.observe(block);
+        }
 
         block.append(bar, placeholder, note);
         rect.appendChild(block);

@@ -1,0 +1,110 @@
+# 推送到 main：只跑测试。
+# 推送标签 v1.1.1（必须等于 package.json 的 version）：测试、打包、发布 Release。
+# 也可以在 Actions 页手动运行，并勾选发布 Release。
+# 安装包没有签名。CSC_IDENTITY_AUTO_DISCOVERY 关掉，避免在钥匙串上一直等待。
+
+name: Check and release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "把安装包挂到 GitHub Release（标签为 v 加 package.json 版本号）"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: node_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: node_app/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - name: Tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          ver=$(node --input-type=module -e "import {readFileSync} from 'node:fs'; process.stdout.write(JSON.parse(readFileSync('package.json','utf8')).version)")
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$ver" != "$tag" ]; then
+            echo "标签 v$tag 和 package.json 的版本 $ver 不一致。先改版本号并提交，再打同样的标签。"
+            exit 1
+          fi
+
+  pack:
+    name: Pack installers
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: node_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: node_app/package-lock.json
+      - run: npm ci
+      - name: Pack macOS and Windows
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run pack
+      - name: List installers
+        run: ls -lh dist/*.dmg dist/*.exe dist/*.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sql-joiner-installers
+          if-no-files-found: error
+          path: |
+            node_app/dist/*.dmg
+            node_app/dist/*.exe
+            node_app/dist/*.zip
+      - name: Read version
+        id: ver
+        run: |
+          ver=$(node --input-type=module -e "import {readFileSync} from 'node:fs'; process.stdout.write(JSON.parse(readFileSync('package.json','utf8')).version)")
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "tag=v$ver" >> "$GITHUB_OUTPUT"
+      - name: Publish Release
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: SQL Joiner ${{ steps.ver.outputs.version }}
+          generate_release_notes: true
+          files: |
+            node_app/dist/*.dmg
+            node_app/dist/*.exe
+            node_app/dist/*.zip
+          body: |
+            SQL Joiner ${{ steps.ver.outputs.version }}。安装包没有签名。
+
+            - Apple 芯片的 Mac：`SQL Joiner-${{ steps.ver.outputs.version }}-arm64.dmg`
+            - Intel Mac：`SQL Joiner-${{ steps.ver.outputs.version }}.dmg`
+            - Windows 安装程序：`SQL Joiner Setup ${{ steps.ver.outputs.version }}.exe`
+            - Windows 压缩包：`SQL Joiner-${{ steps.ver.outputs.version }}-win.zip`
+
+            Mac 第一次打开：在 Finder 里按住 Control 点应用，选择「打开」。Windows 若出现 SmartScreen，选择「仍要运行」。
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
