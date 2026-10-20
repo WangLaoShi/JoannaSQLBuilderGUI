@@ -3105,6 +3105,71 @@ const QueryPanel = (() => {
     // Produces a human-readable SELECT statement from State.
     // The server (Phase 6) will generate the authoritative query.
     // =========================================================================
+    function _aliasToUnion(sql, aliases) {
+        let out = String(sql ?? '');
+        aliases.forEach(alias => {
+            const a = String(alias).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            out = out.replace(new RegExp('`' + a + '`\\.', 'g'), 'u.');
+            out = out.replace(new RegExp('\\b' + a + '\\.', 'g'), 'u.');
+        });
+        return out;
+    }
+
+    function _dedupeCommaList(sql) {
+        if (!sql || sql === '*' || sql.includes("'|||'")) return sql;
+        const seen = new Set();
+        const out = [];
+        _splitSelectExprs(sql).forEach(part => {
+            const text = part.trim();
+            if (!text || seen.has(text)) return;
+            seen.add(text);
+            out.push(text);
+        });
+        return out.join(', ');
+    }
+
+    /** Chain of subquery cards linked by State.unions. Null when this set has no union. */
+    function _unionPlan(tables, joins, unions) {
+        const ids = new Set(tables.map(t => t.id));
+        const relevant = (unions || []).filter(u => u.enabled !== false && ids.has(u.fromTableId) && ids.has(u.toTableId));
+        if (!relevant.length) return null;
+        if ((joins || []).some(j => j.enabled !== false && ids.has(j.fromTableId) && ids.has(j.toTableId))) {
+            return { error: 'A union group cannot also contain a join. Put the join inside one subquery.' };
+        }
+        const incoming = new Map(tables.map(t => [t.id, 0]));
+        const outgoing = new Map(tables.map(t => [t.id, []]));
+        for (const link of relevant) {
+            if (link.fromTableId === link.toTableId) return { error: 'A subquery cannot be unioned with itself.' };
+            incoming.set(link.toTableId, (incoming.get(link.toTableId) || 0) + 1);
+            outgoing.get(link.fromTableId).push(link);
+        }
+        if ([...incoming.values()].some(n => n > 1)) return { error: 'Each subquery can have only one incoming union.' };
+        if ([...outgoing.values()].some(links => links.length > 1)) return { error: 'Each subquery can have only one outgoing union.' };
+        const starts = tables.filter(t => incoming.get(t.id) === 0);
+        if (starts.length !== 1) return { error: 'Union links must form one chain, without a fork or a cycle.' };
+        const byId = Object.fromEntries(tables.map(t => [t.id, t]));
+        const chain = [];
+        const ops = [];
+        const seen = new Set();
+        let cursor = starts[0].id;
+        while (cursor) {
+            if (seen.has(cursor)) return { error: 'Union links must form one chain, without a fork or a cycle.' };
+            seen.add(cursor);
+            chain.push(byId[cursor]);
+            const next = outgoing.get(cursor)[0];
+            if (!next) break;
+            ops.push(String(next.op || 'UNION ALL').toUpperCase() === 'UNION' ? 'UNION' : 'UNION ALL');
+            cursor = next.toTableId;
+        }
+        if (seen.size !== tables.length) return { error: 'Union links must connect every table in this group.' };
+        if (chain.some(t => !t.isSubquery || !String(t.subquery || '').trim())) {
+            return { error: 'Union links connect subquery cards. Each card needs a SELECT.' };
+        }
+        const counts = chain.map(t => (t.columns || []).filter(c => String((c && c.name) || c || '').trim()).length).filter(n => n > 0);
+        if (new Set(counts).size > 1) return { error: 'Union branches must list the same number of columns.' };
+        return { chain, ops, aliases: chain.map(t => t.alias) };
+    }
+
     function buildSQL(state) {
         if (!state.tables.length) return '-- Add tables to the canvas to begin';
 
@@ -3305,6 +3370,22 @@ const QueryPanel = (() => {
             return minA - minB;
         });
 
+        const unionPlan = _unionPlan(activeTables, activeJoins, state.unions || []);
+        if (unionPlan?.error) return '-- ' + unionPlan.error;
+        const _u = (text) => unionPlan ? _aliasToUnion(text, unionPlan.aliases) : text;
+        if (unionPlan) {
+            // One result row shape. Drop the between-table marker and repeated stars.
+            const seen = new Set();
+            const kept = [];
+            _splitSelectExprs(_u(selectPart)).forEach(part => {
+                const text = part.trim();
+                if (!text || text === "'|||'" || seen.has(text)) return;
+                seen.add(text);
+                kept.push(text);
+            });
+            selectPart = kept.join(', ') || 'u.*';
+        }
+
         const first = orderedTables[0];
         const chain = new Set([first.id]);
         const _selectKw = (state.selectDistinct ?? false) ? 'SELECT DISTINCT' : 'SELECT';
@@ -3313,8 +3394,14 @@ const QueryPanel = (() => {
             ? `${_selectKw}\n\t${selectPart}`
             : `${_selectKw}\n\t${_selParts.join(',\n\t')}`;
         let sql = `${_fmtSel}\nFROM\n\t${tableRef(first)} ${first.alias}`;
+        if (unionPlan) {
+            const branches = unionPlan.chain.map(t => `(\n${subquerySql(t.subquery)}\n\t)`);
+            let body = branches[0];
+            unionPlan.ops.forEach((op, i) => { body += `\n\t${op}\n\t${branches[i + 1]}`; });
+            sql = `${_fmtSel}\nFROM\n\t(\n\t${body}\n\t) u`;
+        }
 
-        sortedJoins.forEach(j => {
+        if (!unionPlan) sortedJoins.forEach(j => {
             const fromT = tMap[j.fromTableId];
             const toT   = tMap[j.toTableId];
             if (!fromT || !toT) return;
@@ -3361,16 +3448,17 @@ const QueryPanel = (() => {
                         const expr = (c.expr ?? '').trim();
                         if (!expr) return;
                         part = /^select\s/i.test(expr) ? `(${expr})` : expr;
-                    } else if (c.op === 'IS NULL')     { part = `${c.col} IS NULL`; }
-                    else if (c.op === 'IS NOT NULL')   { part = `${c.col} IS NOT NULL`; }
+                        part = _u(part);
+                    } else if (c.op === 'IS NULL')     { part = `${_u(c.col)} IS NULL`; }
+                    else if (c.op === 'IS NOT NULL')   { part = `${_u(c.col)} IS NOT NULL`; }
                     else if (c.op === 'IN' || c.op === 'NOT IN') {
                         const vals = String(c.val ?? '').split(',').map(v => v.trim()).filter(v => v !== '');
-                        part = `${c.col} ${c.op} (${vals.join(', ')})`;
+                        part = `${_u(c.col)} ${c.op} (${vals.join(', ')})`;
                     } else if (c.op === 'BETWEEN' || c.op === 'NOT BETWEEN') {
-                        part = `${c.col} ${c.op} ${String(c.val ?? '')} AND ${String(c.val2 ?? '')}`;
+                        part = `${_u(c.col)} ${c.op} ${String(c.val ?? '')} AND ${String(c.val2 ?? '')}`;
                     } else {
                         const v = String(c.val ?? '');
-                        part = `${c.col} ${c.op} ${v}`;
+                        part = `${_u(c.col)} ${c.op} ${v}`;
                     }
 
                     if (c.startGroup) part = '(' + part;
@@ -3387,7 +3475,7 @@ const QueryPanel = (() => {
             }
 
             if (_hasRawWhere) {
-                const rawTrimmed = state.whereRaw.trim();
+                const rawTrimmed = _u(state.whereRaw.trim());
                 if (firstPart) {
                     whereSql += `\nWHERE\n\t${rawTrimmed}`;
                 } else {
@@ -3400,24 +3488,24 @@ const QueryPanel = (() => {
 
         // --- GROUP BY ---
         if (state.groupByMode === 'raw' && state.groupByRaw?.trim()) {
-            sql += `\nGROUP BY ${state.groupByRaw.trim()}`;
+            sql += `\nGROUP BY ${_u(state.groupByRaw.trim())}`;
         } else if (state.groupBy?.length) {
-            sql += `\nGROUP BY ${state.groupBy.join(', ')}`;
+            sql += `\nGROUP BY ${state.groupBy.map(_u).join(', ')}`;
         }
 
         // --- HAVING ---
         if (state.havingMode === 'raw' && state.havingRaw?.trim()) {
-            sql += `\nHAVING\n\t${state.havingRaw.trim()}`;
+            sql += `\nHAVING\n\t${_u(state.havingRaw.trim())}`;
         } else if (state.having?.length) {
-            const parts = state.having.map(c => _havingSqlPart(c)).filter(Boolean);
+            const parts = state.having.map(c => _u(_havingSqlPart(c))).filter(Boolean);
             sql += `\nHAVING\n\t    ${parts.join('\n\tAND ')}`;
         }
 
         // --- ORDER BY ---
         if (state.orderByMode === 'raw' && state.orderByRaw?.trim()) {
-            sql += `\nORDER BY ${state.orderByRaw.trim()}`;
+            sql += `\nORDER BY ${_u(state.orderByRaw.trim())}`;
         } else if (state.orderBy?.length) {
-            sql += `\nORDER BY ${state.orderBy.map(o => `${o.col} ${o.dir}`).join(', ')}`;
+            sql += `\nORDER BY ${state.orderBy.map(o => `${_u(o.col)} ${o.dir}`).join(', ')}`;
         }
 
         // --- LIMIT ---

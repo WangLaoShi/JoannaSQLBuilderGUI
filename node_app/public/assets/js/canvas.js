@@ -414,6 +414,7 @@ const Canvas = (() => {
         state.tables.forEach(t => renderTable(t));
 
         if (typeof Joins    !== 'undefined') Joins.rebuildFromState(state);
+        if (typeof Unions   !== 'undefined') Unions.redraw();
         if (typeof Islands  !== 'undefined') Islands.recompute();
     }
 
@@ -552,6 +553,13 @@ const Canvas = (() => {
             sqLoadHeaderBtn.textContent = 'L';
             sqLoadHeaderBtn.title = 'Load .sql or .csv file into subquery (same as Alt+L)';
             copySimpleBtn.insertAdjacentElement('afterend', sqLoadHeaderBtn);
+
+            const unionHandle = document.createElement('button');
+            unionHandle.type = 'button';
+            unionHandle.className = 'sq-union-handle btn-icon';
+            unionHandle.textContent = '∪';
+            unionHandle.title = 'Drag onto another subquery to UNION ALL';
+            header.querySelector('.table-card__remove')?.before(unionHandle);
 
             const sqBody       = document.createElement('div');
             sqBody.className   = 'subquery-body';
@@ -1095,7 +1103,7 @@ const Canvas = (() => {
         header.addEventListener('mousedown', (e) => {
             if (e.button !== 0) return;
             // Don't initiate drag when clicking alias input, remove button, or DDL button
-            if (e.target.tagName === 'INPUT' || e.target.classList.contains('table-card__remove') || e.target.classList.contains('table-card__ddl-btn')) return;
+            if (e.target.tagName === 'INPUT' || e.target.classList.contains('table-card__remove') || e.target.classList.contains('table-card__ddl-btn') || e.target.classList.contains('sq-union-handle')) return;
 
             // Auto-select island when touching a table from an unselected island
             if (typeof Islands !== 'undefined') Islands.onTableMousedown(tableData.id);
@@ -1647,6 +1655,9 @@ const Canvas = (() => {
             State.joins = State.joins.filter(
                 j => j.fromTableId !== _cut.tableId && j.toTableId !== _cut.tableId
             );
+            State.unions = (State.unions || []).filter(
+                u => u.fromTableId !== _cut.tableId && u.toTableId !== _cut.tableId
+            );
         }
 
         // Position: mouse = top-centre of placed card
@@ -1764,6 +1775,9 @@ const Canvas = (() => {
         // Remove joins involving this table
         State.joins = State.joins.filter(
             j => j.fromTableId !== tableId && j.toTableId !== tableId
+        );
+        State.unions = (State.unions || []).filter(
+            u => u.fromTableId !== tableId && u.toTableId !== tableId
         );
 
         // Remove from State.tables

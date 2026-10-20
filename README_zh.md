@@ -1,6 +1,6 @@
 # JoannaSQLBuilderGUI
 
-这是 SQL Joiner 的 Node 版本，GitHub 仓库名是 JoannaSQLBuilderGUI，当前版本 **1.1.2**。代码放在 `node_app/`。学生不需要安装 PHP。本机起一个服务，浏览器或安装包打开同一套拖拽画布，用它连接 MySQL，把 SELECT 查询搭出来再运行。
+这是 SQL Joiner 的 Node 版本，GitHub 仓库名是 JoannaSQLBuilderGUI，当前版本 **1.1.3**。代码放在 `node_app/`。学生不需要安装 PHP。本机起一个服务，浏览器或安装包打开同一套拖拽画布，用它连接 MySQL，把 SELECT 查询搭出来再运行。
 
 窗口标题仍显示 SQL Joiner。原来的 PHP 版本仍在 `app/`，说明见根目录的 `README.md`。协议是 GPL-3.0-or-later，见 `LICENSE`。
 
@@ -51,6 +51,12 @@
 - 组说明在写入页面之前滤掉脚本。第一次点进说明框时，编辑框不再被拆掉重建。
 - Mac 包和 Windows 包分别在对应的系统上打包。
 
+### 2026-10-20　1.1.3
+
+- 两张子查询卡片可以用标题上的 ∪ 连成 `UNION ALL`。点连线中间的文字改成 `UNION`，点 × 去掉这条连线。每张卡片只能有一条出去的连线和一条进来的连线。
+- 外层的 WHERE、GROUP BY、ORDER BY、LIMIT 作用在合并之后的结果上，别名固定是 `u`。列名沿用第一条分支。没有单独勾选字段时，SELECT 是 `u.*`。
+- 这一组不能再拉 JOIN。普通表卡片不能用 ∪。窗口函数、CTE、`EXISTS` 仍然要写在卡片里的 SQL 中。
+
 ## 运行
 
 需要 Node.js 20 或更新版本。
@@ -74,7 +80,7 @@ npm run desktop
 
 ## 版本
 
-版本号只写在 `node_app/package.json` 的 `version`。页面标题、右上角、关于窗口、保存的场景，以及安装包文件名都读这个号。当前源码版本是 1.1.2。
+版本号只写在 `node_app/package.json` 的 `version`。页面标题、右上角、关于窗口、保存的场景，以及安装包文件名都读这个号。当前源码版本是 1.1.3。
 
 ## 安装包
 

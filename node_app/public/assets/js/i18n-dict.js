@@ -2,6 +2,14 @@
 window.SQLJ_ZH = {
   exact: {
     '(leave blank to keep existing password)': '留空则保留原来的密码',
+    'Drag onto another subquery to UNION ALL': '拖到另一张子查询上，做成 UNION ALL',
+    'Toggle UNION or UNION ALL': '在 UNION 和 UNION ALL 之间切换',
+    'Remove union': '去掉合并',
+    'A union already connects these subqueries.': '这两张子查询已经合并过了。',
+    'Each subquery can have only one outgoing union.': '每张子查询只能连出一条合并线。',
+    'Each subquery can have only one incoming union.': '每张子查询只能连入一条合并线。',
+    'Union links must form one chain, without a fork or a cycle.': '合并线必须是一条链，不能分叉，也不能绕回自己。',
+    'Drop onto another subquery card.': '请拖到另一张子查询卡片上。',
     '+ Add': '+ 添加',
     '+ Raw Condition': '+ 手写条件',
     'A join already exists between these columns.': '这两个字段之间已经有连接。',

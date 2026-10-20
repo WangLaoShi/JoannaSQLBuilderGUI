@@ -177,6 +177,105 @@ function buildSelect(select, addDelimiter, selectAliases, sortAlpha) {
   return parts.join(', ');
 }
 
+function aliasToUnion(sql, aliases) {
+  let out = String(sql ?? '');
+  for (const alias of aliases) {
+    const a = String(alias).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    out = out.replace(new RegExp(`\\\`${a}\\\`\\.`, 'g'), 'u.');
+    out = out.replace(new RegExp(`\\b${a}\\.`, 'g'), 'u.');
+  }
+  return out;
+}
+
+function dedupeSelectList(sql) {
+  if (!sql || sql === '*' || sql.includes("'|||'")) return sql;
+  const seen = new Set();
+  const out = [];
+  for (const part of splitSelectExprs(sql)) {
+    const text = part.trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+  }
+  return out.join(', ');
+}
+
+function columnCount(table) {
+  return (table.columns || []).filter(col => String(columnName(col) || '').trim() !== '').length;
+}
+
+/**
+ * Union links are a chain of subquery cards, separate from JOIN lines.
+ * Returns null when this table set has no union link.
+ */
+function unionPlan(tables, joins, unions) {
+  const ids = new Set(tables.map(t => t.id));
+  const relevant = (unions || []).filter(u => u.enabled !== false && ids.has(u.fromTableId) && ids.has(u.toTableId));
+  if (!relevant.length) return null;
+  const joinInside = (joins || []).some(j => j.enabled !== false && ids.has(j.fromTableId) && ids.has(j.toTableId));
+  if (joinInside) {
+    throw new HttpError('A union group cannot also contain a join. Put the join inside one subquery.', 400);
+  }
+  const incoming = new Map(tables.map(t => [t.id, 0]));
+  const outgoing = new Map(tables.map(t => [t.id, []]));
+  for (const link of relevant) {
+    if (link.fromTableId === link.toTableId) {
+      throw new HttpError('A subquery cannot be unioned with itself.', 400);
+    }
+    incoming.set(link.toTableId, (incoming.get(link.toTableId) || 0) + 1);
+    outgoing.get(link.fromTableId).push(link);
+  }
+  for (const count of incoming.values()) {
+    if (count > 1) throw new HttpError('Each subquery can have only one incoming union.', 400);
+  }
+  for (const links of outgoing.values()) {
+    if (links.length > 1) throw new HttpError('Each subquery can have only one outgoing union.', 400);
+  }
+  const starts = tables.filter(t => incoming.get(t.id) === 0);
+  if (starts.length !== 1) {
+    throw new HttpError('Union links must form one chain, without a fork or a cycle.', 400);
+  }
+  const tableMap = Object.fromEntries(tables.map(t => [t.id, t]));
+  const chain = [];
+  const ops = [];
+  const seen = new Set();
+  let cursor = starts[0].id;
+  while (cursor) {
+    if (seen.has(cursor)) throw new HttpError('Union links must form one chain, without a fork or a cycle.', 400);
+    seen.add(cursor);
+    chain.push(tableMap[cursor]);
+    const next = outgoing.get(cursor)[0];
+    if (!next) break;
+    ops.push(String(next.op || 'UNION ALL').toUpperCase() === 'UNION' ? 'UNION' : 'UNION ALL');
+    cursor = next.toTableId;
+  }
+  if (seen.size !== tables.length) {
+    throw new HttpError('Union links must connect every table in this group.', 400);
+  }
+  for (const table of chain) {
+    if (!table.isSubquery || !String(table.subquery || '').trim()) {
+      throw new HttpError('Union links connect subquery cards. Each card needs a SELECT.', 400);
+    }
+  }
+  const counts = chain.map(columnCount).filter(n => n > 0);
+  if (new Set(counts).size > 1) {
+    throw new HttpError('Union branches must list the same number of columns.', 400);
+  }
+  return { chain, ops, aliases: chain.map(t => String(t.alias || '')) };
+}
+
+function unionFromSql(plan) {
+  const branches = plan.chain.map(table => {
+    const body = subquerySql(table.subquery).split('\n').map(line => `\t\t${line}`).join('\n');
+    return `(\n${body}\n\t)`;
+  });
+  let body = `\t${branches[0]}`;
+  for (let i = 0; i < plan.ops.length; i++) {
+    body += `\n\t${plan.ops[i]}\n\t${branches[i + 1]}`;
+  }
+  return `(\n${body}\n\t) u`;
+}
+
 function buildJoins(joins, tables) {
   if (!joins.length) return '';
   const tableMap = Object.fromEntries(tables.map(t => [t.id, t]));
@@ -462,10 +561,12 @@ export function assembleQuery(state, opts = {}) {
     }
   }
 
+  const enabledUnions = (state.unions || []).filter(u => u.enabled !== false);
+  const components = connectedComponents([...joins, ...enabledUnions], tables);
+  const unions = unionPlan(tables, joins, enabledUnions);
   const first = tables[0];
-  const fromSql = `${tableRef(first)} ${first.alias}`;
-  const joinSql = buildJoins(joins, tables);
-  const components = connectedComponents(joins, tables);
+  const fromSql = unions ? unionFromSql(unions) : `${tableRef(first)} ${first.alias}`;
+  const joinSql = unions ? '' : buildJoins(joins, tables);
   const warnings = [];
   if (components.length > 1) {
     const tableMap = Object.fromEntries(tables.map(t => [t.id, t]));
@@ -475,11 +576,37 @@ export function assembleQuery(state, opts = {}) {
     warnings.push(msg);
   }
 
-  const whereSql = buildWhere(state.where || [], String(state.whereRaw ?? ''), state.whereMode || 'visual');
-  const groupBySql = buildGroupBy(state.groupBy || [], String(state.groupByRaw ?? ''), state.groupByMode || 'visual');
-  const havingSql = buildHaving(state.having || [], String(state.havingRaw ?? ''), state.havingMode || 'visual');
-  const orderSql = buildOrderBy(state.orderBy || [], String(state.orderByRaw ?? ''), state.orderByMode || 'visual');
+  const rewrite = (sql) => unions ? aliasToUnion(sql, unions.aliases) : sql;
+  const whereInput = unions
+    ? (state.where || []).map(cond => ({ ...cond, col: rewrite(cond.col), expr: rewrite(cond.expr) }))
+    : (state.where || []);
+  const whereSql = buildWhere(whereInput, rewrite(String(state.whereRaw ?? '')), state.whereMode || 'visual');
+  const groupBySql = buildGroupBy(
+    unions ? (state.groupBy || []).map(rewrite) : (state.groupBy || []),
+    rewrite(String(state.groupByRaw ?? '')),
+    state.groupByMode || 'visual',
+  );
+  const havingInput = unions
+    ? (state.having || []).map(cond => ({ ...cond, col: rewrite(cond.col) }))
+    : (state.having || []);
+  const havingSql = buildHaving(havingInput, rewrite(String(state.havingRaw ?? '')), state.havingMode || 'visual');
+  const orderInput = unions
+    ? (state.orderBy || []).map(item => ({ ...item, col: rewrite(item.col) }))
+    : (state.orderBy || []);
+  const orderSql = buildOrderBy(orderInput, rewrite(String(state.orderByRaw ?? '')), state.orderByMode || 'visual');
   const limit = Math.min(Number.parseInt(state.limit ?? 10, 10) || 0, MAX_LIMIT);
+
+  if (unions) {
+    const seen = new Set();
+    const kept = [];
+    for (const part of splitSelectExprs(aliasToUnion(selectSql, unions.aliases))) {
+      const text = part.trim();
+      if (!text || text === "'|||'" || seen.has(text)) continue;
+      seen.add(text);
+      kept.push(text);
+    }
+    selectSql = kept.join(', ') || 'u.*';
+  }
 
   const selectParts = splitSelectExprs(selectSql);
   const selectKw = selectDistinct ? 'SELECT DISTINCT' : 'SELECT';

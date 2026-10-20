@@ -2001,6 +2001,29 @@ body.is-card-resizing-b  * { cursor: s-resize    !important; user-select: none !
 }
 .table-card__header:active { cursor: grabbing; }
 
+.sq-union-handle {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    border: 1px solid #c084fc;
+    background: var(--surface3);
+    color: #c084fc;
+    cursor: crosshair;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+}
+.sq-union-handle.is-union-target { outline: 2px solid #c084fc; }
+.union-line { fill: none; stroke: #c084fc; stroke-width: 2.5; pointer-events: stroke; }
+.union-label, .union-delete {
+    font-size: 12px;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    cursor: pointer;
+}
+.union-label { fill: #c084fc; }
+.union-delete { fill: #f07070; }
+
 /* Top row: order dropdown + alias input + close button */
 .table-card__header-row {
     display: flex;

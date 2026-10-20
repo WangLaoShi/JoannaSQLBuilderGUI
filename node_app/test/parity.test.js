@@ -132,3 +132,63 @@ test('parser keeps a simple join visual and forces aggregate HAVING to raw', () 
   assert.equal(parsed.whereConditions[1].type, 'raw');
   assert.match(parsed.whereConditions[1].expr, /SELECT id FROM dropped/);
 });
+
+test('two subquery cards combine with UNION ALL and the outer alias is u', () => {
+  const online = {
+    id: 'a', name: 'sq1', alias: 'sq1', order: 1, isSubquery: true,
+    subquery: "SELECT Merchant_id, SUM(amount) AS sum_\nFROM online\nWHERE Coupon_id != 'fixed';",
+    columns: [{ name: 'Merchant_id' }, { name: 'sum_' }],
+  };
+  const offline = {
+    id: 'b', name: 'sq2', alias: 'sq2', order: 2, isSubquery: true,
+    subquery: 'SELECT Merchant_id, SUM(amount) AS sum_\nFROM offline',
+    columns: [{ name: 'Merchant_id' }, { name: 'sum_' }],
+  };
+  const { sql, warnings } = assembleQuery({
+    tables: [online, offline],
+    unions: [{ id: 'u1', fromTableId: 'a', toTableId: 'b', op: 'UNION ALL', enabled: true }],
+    select: ['sq1.Merchant_id', 'sq2.sum_'],
+    groupBy: ['sq1.Merchant_id'],
+    orderBy: [{ col: 'sq1.sum_', dir: 'DESC' }],
+    where: [{ col: 'sq1.Merchant_id', op: '!=', val: "''", operator: 'AND', enabled: true }],
+    limit: 10,
+  });
+  assert.deepEqual(warnings, []);
+  assert.match(sql, /SELECT\n\tu\.`Merchant_id`,\n\tu\.`sum_`/);
+  assert.match(sql, /UNION ALL/);
+  assert.doesNotMatch(sql, /JOIN/);
+  assert.doesNotMatch(sql, /;/);
+  assert.match(sql, /\) u\nWHERE/);
+  assert.match(sql, /u\.Merchant_id != ''/);
+  assert.match(sql, /GROUP BY u\.Merchant_id/);
+  assert.match(sql, /ORDER BY u\.sum_ DESC/);
+  assert.match(sql, /Coupon_id != 'fixed'/);
+
+  const distinct = assembleQuery({
+    tables: [online, offline],
+    unions: [{ fromTableId: 'a', toTableId: 'b', op: 'UNION', enabled: true }],
+    limit: 10,
+  });
+  assert.match(distinct.sql, /\tUNION\n/);
+  assert.doesNotMatch(distinct.sql, /UNION ALL/);
+});
+
+test('a union group rejects a join, a column-count mismatch, and a cycle shape', () => {
+  const card = (id, alias, cols) => ({
+    id, name: alias, alias, order: 1, isSubquery: true,
+    subquery: 'SELECT 1 AS n',
+    columns: cols,
+  });
+  const base = {
+    tables: [card('a', 'a', [{ name: 'n' }]), card('b', 'b', [{ name: 'n' }, { name: 'm' }])],
+    unions: [{ fromTableId: 'a', toTableId: 'b', op: 'UNION ALL' }],
+    limit: 10,
+  };
+  assert.throws(() => assembleQuery(base), /same number of columns/);
+  assert.throws(() => assembleQuery({
+    tables: [card('a', 'a', []), card('b', 'b', [])],
+    joins: [{ fromTableId: 'a', fromCol: 'n', toTableId: 'b', toCol: 'n', type: 'INNER', enabled: true }],
+    unions: [{ fromTableId: 'a', toTableId: 'b', op: 'UNION ALL' }],
+    limit: 10,
+  }), /cannot also contain a join/);
+});

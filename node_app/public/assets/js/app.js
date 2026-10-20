@@ -32,6 +32,9 @@ const State = {
     /** @type {Array<{id:string, fromTableId:string, fromCol:string, toTableId:string, toCol:string, type:string, extraConditions:Array<{fromCol:string,toCol:string}>}>} */
     joins: [],
 
+    /** @type {Array<{id:string, fromTableId:string, toTableId:string, op:'UNION'|'UNION ALL', enabled:boolean}>} */
+    unions: [],
+
     /** @type {string[]}  empty = SELECT *  */
     select: [],
 
@@ -3471,6 +3474,7 @@ const App = (() => {
         Object.assign(State, {
             tables:             parsed.tables ?? [],
             joins:              parsed.joins  ?? [],
+            unions:             [],
 
             // SELECT — always visual; alias.col → checkboxes, everything else → custom exprs
             select:             parsed.select ?? [],
@@ -3778,6 +3782,7 @@ const App = (() => {
             Object.assign(State, {
                 tables:         parsed.tables         ?? [],
                 joins:          parsed.joins          ?? [],
+                unions:         Array.isArray(parsed.unions) ? parsed.unions : [],
                 select:             parsed.select             ?? [],
                 selectRaw:          parsed.selectRaw          ?? '',
                 selectMode:         parsed.selectMode         ?? 'visual',
@@ -5468,10 +5473,12 @@ const App = (() => {
         const islands = [];
 
         tables.forEach(t => { adj[t.id] = []; });
-        enabledJoins.forEach(j => {
-            if (adj[j.fromTableId]) adj[j.fromTableId].push(j.toTableId);
-            if (adj[j.toTableId])   adj[j.toTableId].push(j.fromTableId);
-        });
+        const link = (fromId, toId) => {
+            if (adj[fromId]) adj[fromId].push(toId);
+            if (adj[toId])   adj[toId].push(fromId);
+        };
+        enabledJoins.forEach(j => link(j.fromTableId, j.toTableId));
+        (State.unions || []).filter(u => u.enabled !== false).forEach(u => link(u.fromTableId, u.toTableId));
 
         tables.forEach(t => {
             if (visited.has(t.id)) return;
@@ -6325,9 +6332,18 @@ function _applySubqueryIndent(s) {
             continue;
         }
 
-        // ── Subquery closer: first ')' on a line while inside a subquery ─────
+        // A ')' closes the subquery only when it is not matched by an '('
+        // earlier on the same line. SUM(amount) must stay intact.
         if (sqDepth > 0) {
-            const ci = trimmed.indexOf(')');
+            let depth = 0;
+            let ci = -1;
+            for (let i = 0; i < trimmed.length; i++) {
+                if (trimmed[i] === '(') depth++;
+                else if (trimmed[i] === ')') {
+                    if (depth === 0) { ci = i; break; }
+                    depth--;
+                }
+            }
             if (ci !== -1) {
                 const before        = trimmed.slice(0, ci).trimEnd();
                 const after         = trimmed.slice(ci + 1).trim();
