@@ -352,7 +352,29 @@
   }
 
   function skipText(parent) {
+    if (parent.id === 'btn-theme' || parent.id === 'btn-lang') return true;
     return !!parent.closest('script,style,textarea,input,[contenteditable="true"],#results-table,#sql-preview-text,.toast');
+  }
+
+  function paintThemeButton() {
+    const btn = document.getElementById('btn-theme');
+    if (!btn) return;
+    const light = document.documentElement.dataset.theme === 'light';
+    const label = light ? 'Dark' : 'Light';
+    const title = light ? 'Switch to dark theme' : 'Switch to light theme';
+    const text = t(label);
+    const tip = t(title);
+    if (btn.textContent !== text) btn.textContent = text;
+    if (btn.title !== tip) btn.title = tip;
+  }
+
+  function applyTheme(mode, persist) {
+    const light = mode === 'light';
+    document.documentElement.dataset.theme = light ? 'light' : 'dark';
+    if (persist) {
+      try { localStorage.setItem('sqlj-theme', light ? 'light' : 'dark'); } catch (e) {}
+    }
+    paintThemeButton();
   }
 
   function skipAttr(el) {
@@ -395,6 +417,7 @@
       const btn = document.getElementById('btn-lang');
       const label = lang() === 'zh' ? '中文' : 'EN';
       if (btn && btn.textContent !== label) btn.textContent = label;
+      paintThemeButton();
       translatePreview();
     } finally {
       applying = false;
@@ -444,6 +467,22 @@
       });
       host.appendChild(btn);
     }
+    if (host && !document.getElementById('btn-theme')) {
+      const themeBtn = document.createElement('button');
+      themeBtn.id = 'btn-theme';
+      themeBtn.type = 'button';
+      themeBtn.style.cssText = 'margin-left:4px;font-size:12px;padding:2px 8px;cursor:pointer;';
+      themeBtn.addEventListener('click', () => {
+        const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+        applyTheme(next, true);
+      });
+      host.appendChild(themeBtn);
+    }
+    applyTheme(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark', false);
+    window.addEventListener('storage', (e) => {
+      if (e.key !== 'sqlj-theme') return;
+      applyTheme(e.newValue === 'light' ? 'light' : 'dark', false);
+    });
     apply(document.body);
     window.addEventListener('load', () => apply(document.body));
     observer = new MutationObserver(records => {
@@ -451,7 +490,7 @@
       for (const record of records) {
         if (record.type === 'characterData' || record.type === 'attributes') {
           const el = record.target.nodeType === 1 ? record.target : record.target.parentElement;
-          if (!el || el.id === 'btn-lang' || el.closest?.('#results-table,script,style,.toast,[contenteditable="true"]')) continue;
+          if (!el || el.id === 'btn-lang' || el.id === 'btn-theme' || el.closest?.('#results-table,script,style,.toast,[contenteditable="true"]')) continue;
           if (el.id === 'sql-preview-text' || el.closest?.('#sql-preview-text')) {
             schedulePreview();
             continue;
@@ -461,7 +500,7 @@
         }
         for (const node of record.addedNodes) {
           const el = node.nodeType === 1 ? node : node.parentElement;
-          if (!el || el.id === 'btn-lang' || el.closest?.('#results-table,script,style,[contenteditable="true"]')) continue;
+          if (!el || el.id === 'btn-lang' || el.id === 'btn-theme' || el.closest?.('#results-table,script,style,[contenteditable="true"]')) continue;
           if (el.id === 'sql-preview-text' || el.closest?.('#sql-preview-text')) {
             schedulePreview();
             continue;

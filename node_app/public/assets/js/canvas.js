@@ -1779,6 +1779,7 @@ const Canvas = (() => {
         State.unions = (State.unions || []).filter(
             u => u.fromTableId !== tableId && u.toTableId !== tableId
         );
+        if (typeof Unions !== 'undefined') Unions.redraw();
 
         // Remove from State.tables
         State.tables = State.tables.filter(t => t.id !== tableId);

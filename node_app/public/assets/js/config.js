@@ -30,7 +30,12 @@ const QueryPanel = (() => {
         });
         document.getElementById('select-raw-input').addEventListener('input', e => {
             State.selectRaw = e.target.value;
+            _windowLine = null;
             App.updateSQLPreview();
+        });
+        document.getElementById('select-raw-input').addEventListener('click', () => {
+            // The backdrop click paints one word. Run after it, and paint the whole line.
+            setTimeout(_pickSelectLine, 0);
         });
         document.getElementById('where-raw-input').addEventListener('input', e => {
             State.whereRaw = e.target.value;
@@ -80,6 +85,26 @@ const QueryPanel = (() => {
         });
 
         // Sync LIMIT dropdown → already wired in app.js, nothing extra needed here
+
+        document.getElementById('btn-select-window')?.addEventListener('click', () => {
+            const box = document.getElementById('select-window-cols');
+            const fns = document.getElementById('select-window-fns');
+            if (!box) return;
+            const opening = box.classList.contains('hidden');
+            box.classList.toggle('hidden');
+            fns?.classList.toggle('hidden', box.classList.contains('hidden'));
+            if (opening) {
+                if (typeof UndoRedo !== 'undefined') UndoRedo.snapshot();
+                _ensureSelectLines();
+                _normalizeSelectRaw();
+                _windowLine = null;
+                _fillWindowCols();
+            }
+        });
+
+        if (State.selectMode === 'raw') {
+            State.selectRaw = _formatSelectList(State.selectRaw ?? '');
+        }
 
         // Render initial modes
         _applyModeUI('select');
@@ -2617,6 +2642,9 @@ const QueryPanel = (() => {
                   : section === 'having'  ? 'havingMode'
                   :                         'orderByMode';
         State[key] = State[key] === 'visual' ? 'raw' : 'visual';
+        if (section === 'select' && State.selectMode === 'raw') {
+            State.selectRaw = _formatSelectList(State.selectRaw ?? '');
+        }
         _applyModeUI(section);
         App.updateSQLPreview();
     }
@@ -3019,6 +3047,203 @@ const QueryPanel = (() => {
      * Split a raw SELECT list by top-level commas, skipping commas inside
      * parentheses so expressions like CONCAT(a, b) are kept intact.
      */
+    /** Line the user clicked in the SELECT box while "Partition by column" is open. */
+    let _windowLine = null;
+    /** Window function wrapped around that line. OVER alone is not a function. */
+    let _windowFn = 'SUM';
+    const _WINDOW_FNS = ['SUM', 'AVG', 'COUNT', 'MIN', 'MAX', 'ROW_NUMBER', 'RANK', 'DENSE_RANK', 'LAG', 'LEAD'];
+
+    /**
+     * One top-level SELECT expression per line. Commas inside () stay put.
+     */
+    function _formatSelectList(raw) {
+        const parts = _splitSelectExprs(String(raw ?? '')).map(s => s.trim()).filter(Boolean);
+        if (parts.length <= 1) return parts[0] || '';
+        return parts.join(',\n');
+    }
+
+    function _selectExprIndex(raw, caret) {
+        const parts = _splitSelectExprs(String(raw ?? ''));
+        let pos = 0;
+        for (let i = 0; i < parts.length; i++) {
+            const end = pos + parts[i].length;
+            if (caret <= end) return i;
+            pos = end + 1;
+        }
+        return Math.max(0, parts.length - 1);
+    }
+
+    function _withWindow(expr, fn, col) {
+        let body = String(expr || '').trim().replace(/,\s*$/, '');
+        let alias = '';
+        const asMatch = body.match(/\s+AS\s+(`?\w+`?)\s*$/i);
+        if (asMatch) {
+            alias = asMatch[0];
+            body = body.slice(0, asMatch.index).trim();
+        }
+        body = body.replace(/\s+OVER\s*\([\s\S]*\)\s*$/i, '').trim();
+        const wrapped = body.match(/^(SUM|AVG|COUNT|MIN|MAX|LAG|LEAD|FIRST_VALUE|LAST_VALUE|ROW_NUMBER|RANK|DENSE_RANK|NTILE)\s*\(([\s\S]*)\)\s*$/i);
+        if (wrapped) body = wrapped[2].trim();
+        const noArg = /^(ROW_NUMBER|RANK|DENSE_RANK)$/i.test(fn);
+        if (!noArg && !body) return null;
+        const call = noArg ? `${fn}()` : `${fn}(${body})`;
+        return `${call} OVER (PARTITION BY ${col})${alias}`;
+    }
+
+    function _normalizeSelectRaw() {
+        const ta = document.getElementById('select-raw-input');
+        if (!ta) return;
+        const formatted = _formatSelectList(ta.value);
+        if (formatted === ta.value) return;
+        const idx = _selectExprIndex(ta.value, ta.selectionStart ?? 0);
+        ta.value = formatted;
+        State.selectRaw = formatted;
+        const lines = formatted.split('\n');
+        let pos = 0;
+        for (let i = 0; i < idx && i < lines.length; i++) pos += lines[i].length + 1;
+        const end = pos + (lines[idx] || '').length;
+        ta.setSelectionRange(end, end);
+        if (typeof SqlBackdrop !== 'undefined') SqlBackdrop.refresh(ta);
+        App.updateSQLPreview?.();
+    }
+
+    function _defaultSelectLines() {
+        const lines = [];
+        (State.tables || []).forEach(t => {
+            (t.columns || []).forEach(col => {
+                const name = typeof col === 'string' ? col : col?.name;
+                const quoted = name && t.alias ? _quoteExprCol(t.alias, name) : null;
+                if (quoted) lines.push(quoted);
+            });
+        });
+        return lines.join(',\n');
+    }
+
+    function _ensureSelectLines() {
+        const ta = document.getElementById('select-raw-input');
+        if (!ta || ta.value.trim()) return;
+        const text = _defaultSelectLines();
+        if (!text) return;
+        ta.value = text;
+        State.selectRaw = text;
+        if (typeof SqlBackdrop !== 'undefined') SqlBackdrop.refresh(ta);
+        App.updateSQLPreview?.();
+    }
+
+    function _pickSelectLine() {
+        const ta = document.getElementById('select-raw-input');
+        if (!ta || !ta.value.trim()) {
+            _windowLine = null;
+            return;
+        }
+        const parts = _splitSelectExprs(ta.value).map(s => s.trim()).filter(Boolean);
+        if (!parts.length) {
+            _windowLine = null;
+            return;
+        }
+        let idx = _selectExprIndex(ta.value, ta.selectionStart ?? 0);
+        if (idx >= parts.length) idx = parts.length - 1;
+        _windowLine = idx;
+        const lines = ta.value.split('\n');
+        let pos = 0;
+        for (let i = 0; i < idx && i < lines.length; i++) pos += lines[i].length + 1;
+        const end = pos + (lines[idx] || '').length;
+        ta.focus();
+        ta.setSelectionRange(pos, end);
+        if (typeof SqlBackdrop !== 'undefined') SqlBackdrop.markLine(ta, idx);
+        const box = document.getElementById('select-window-cols');
+        const fns = document.getElementById('select-window-fns');
+        if (box?.classList.contains('hidden')) {
+            box.classList.remove('hidden');
+            fns?.classList.remove('hidden');
+            _fillWindowCols();
+        }
+    }
+
+    function _fillWindowFns() {
+        const box = document.getElementById('select-window-fns');
+        if (!box) return;
+        box.textContent = '';
+        _WINDOW_FNS.forEach(fn => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'select-window-fn' + (fn === _windowFn ? ' is-active' : '');
+            b.textContent = fn;
+            b.title = 'Window function';
+            b.addEventListener('click', () => {
+                _windowFn = fn;
+                box.querySelectorAll('button').forEach(el => {
+                    el.classList.toggle('is-active', el.textContent === fn);
+                });
+            });
+            box.appendChild(b);
+        });
+    }
+
+    function _fillWindowCols() {
+        const box = document.getElementById('select-window-cols');
+        if (!box) return;
+        _fillWindowFns();
+        box.textContent = '';
+        let count = 0;
+        (State.tables || []).forEach(t => {
+            (t.columns || []).forEach(col => {
+                const name = typeof col === 'string' ? col : col?.name;
+                if (!name || !t.alias) return;
+                count++;
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'select-window-col';
+                b.textContent = `${t.alias}.${name}`;
+                b.addEventListener('click', () => _applyWindowPartition(t.alias, name));
+                box.appendChild(b);
+            });
+        });
+        if (!count) {
+            const p = document.createElement('p');
+            p.className = 'select-window-empty';
+            p.textContent = 'Add a table to the canvas first.';
+            box.appendChild(p);
+        }
+    }
+
+    function _applyWindowPartition(alias, name) {
+        const ta = document.getElementById('select-raw-input');
+        const col = _quoteExprCol(alias, name);
+        if (!ta || !col) return;
+        _ensureSelectLines();
+        _normalizeSelectRaw();
+        const parts = _splitSelectExprs(ta.value).map(s => s.trim()).filter(Boolean);
+        if (!parts.length || _windowLine == null) {
+            App.notify?.('Click the line you want in the box below. A blue bar covers that whole line. Then click the column again.', 'error');
+            return;
+        }
+        let idx = _windowLine;
+        if (idx >= parts.length) idx = parts.length - 1;
+        const nextExpr = _withWindow(parts[idx], _windowFn, col);
+        if (!nextExpr) {
+            App.notify?.('This line has no value for that function.', 'error');
+            return;
+        }
+        if (typeof UndoRedo !== 'undefined') UndoRedo.snapshot();
+        parts[idx] = nextExpr;
+        const next = parts.join(',\n');
+        ta.value = next;
+        State.selectRaw = next;
+        const lines = next.split('\n');
+        let pos = 0;
+        for (let i = 0; i < idx && i < lines.length; i++) pos += lines[i].length + 1;
+        const end = pos + (lines[idx] || '').length;
+        _windowLine = idx;
+        ta.focus();
+        ta.setSelectionRange(pos, end);
+        if (typeof SqlBackdrop !== 'undefined') {
+            SqlBackdrop.refresh(ta);
+            SqlBackdrop.markLine(ta, idx);
+        }
+        App.updateSQLPreview?.();
+    }
+
     function _splitSelectExprs(raw) {
         const parts = [];
         let depth = 0;

@@ -2,6 +2,16 @@
 window.SQLJ_ZH = {
   exact: {
     '(leave blank to keep existing password)': '留空则保留原来的密码',
+    'Add a table to the canvas first.': '请先把表放到画布上。',
+    'Click a line in the box. A blue bar covers that whole line. Then click a window function and a column.': '点选下面某一行，这一整行会出现蓝条。再点一个窗口函数，然后点选字段名，可以创建窗口。',
+    'Click the line you want in the box below. A blue bar covers that whole line. Then click the column again.': '先点选下面某一行，等整行出现蓝条，再点窗口函数和字段名。',
+    'This line has no value for that function.': '这一行没有可以交给这个函数计算的内容。',
+    'Window function': '窗口函数',
+    'Dark': '深色',
+    'Light': '浅色',
+    'Partition by column': '按列分开算',
+    'Switch to dark theme': '换成深色',
+    'Switch to light theme': '换成浅色',
     'Drag onto another subquery to UNION ALL': '拖到另一张子查询上，做成 UNION ALL',
     'Toggle UNION or UNION ALL': '在 UNION 和 UNION ALL 之间切换',
     'Remove union': '去掉合并',

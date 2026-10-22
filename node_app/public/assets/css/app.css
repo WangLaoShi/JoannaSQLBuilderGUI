@@ -53,6 +53,74 @@
     --font:      'Segoe UI', system-ui, -apple-system, sans-serif;
     --font-mono: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
     --font-size: 13px;
+
+    /* SQL colouring. Light theme overrides these. */
+    --sql-colref:   #ffffff;
+    --sql-colalias: #dcdcaa;
+    --sql-ident:    #9cdcfe;
+}
+
+/* Light theme. Dark stays on :root so an unset page is unchanged. */
+html[data-theme="light"] {
+    --bg:         #f3f4f6;
+    --surface:    #ffffff;
+    --surface2:   #eef0f3;
+    --surface3:   #e3e6eb;
+    --border:     #d5d8de;
+    --border2:    #c3c7d0;
+    --text:       #1c1d21;
+    --text-muted: #5c6370;
+    --text-faint: #6e7582;
+    --accent:     #0b7ea0;
+    --accent-dim: rgba(11, 126, 160, 0.12);
+    --accent-hover: #096888;
+    --sql-colref:   #1c1d21;
+    --sql-colalias: #8a5a00;
+    --sql-ident:    #0b6280;
+}
+
+html[data-theme="light"] .table-card {
+    border-color: var(--border2);
+    box-shadow: 0 4px 14px rgba(20, 24, 32, 0.08);
+}
+
+.select-window-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0 0 6px;
+}
+.select-window-fns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.select-window-fns button.is-active {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+    color: var(--accent);
+}
+.select-window-cols {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    max-height: 140px;
+    overflow: auto;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface2);
+}
+.select-window-cols button {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 2px 6px;
+}
+.select-window-empty,
+.select-window-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin: 2px 0 0;
 }
 
 /* =============================================================================
@@ -6855,9 +6923,9 @@ kbd {
 /* Token colours */
 .sql-hl-keyword  { color: #569cd6; font-weight: 600; }
 .sql-hl-string   { color: #ce9178; }
-.sql-hl-colref     { color: #ffffff; }
-.sql-hl-colalias   { color: #dcdcaa; }
-.sql-hl-ident    { color: #9cdcfe; }
+.sql-hl-colref     { color: var(--sql-colref); }
+.sql-hl-colalias   { color: var(--sql-colalias); }
+.sql-hl-ident    { color: var(--sql-ident); }
 .sql-hl-number   { color: #b5cea8; }
 .sql-hl-comment  { color: #6a9955; font-style: italic; }
 
@@ -6882,6 +6950,8 @@ mark.sql-sel {
     display: block;
     width: 100%;
     box-sizing: border-box;
+    /* Follow the theme. An inline colour copied at startup would stay black in light mode. */
+    background-color: var(--surface) !important;
 }
 
 /* When the textarea inside is hidden (html-toggle active), hide the whole

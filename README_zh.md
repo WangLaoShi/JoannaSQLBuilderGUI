@@ -1,6 +1,6 @@
 # JoannaSQLBuilderGUI
 
-这是 SQL Joiner 的 Node 版本，GitHub 仓库名是 JoannaSQLBuilderGUI，当前版本 **1.1.3**。代码放在 `node_app/`。学生不需要安装 PHP。本机起一个服务，浏览器或安装包打开同一套拖拽画布，用它连接 MySQL，把 SELECT 查询搭出来再运行。
+这是 SQL Joiner 的 Node 版本，GitHub 仓库名是 JoannaSQLBuilderGUI，当前版本 **1.1.4**。代码放在 `node_app/`。学生不需要安装 PHP。本机起一个服务，浏览器或安装包打开同一套拖拽画布，用它连接 MySQL，把 SELECT 查询搭出来再运行。
 
 窗口标题仍显示 SQL Joiner。原来的 PHP 版本仍在 `app/`，说明见根目录的 `README.md`。协议是 GPL-3.0-or-later，见 `LICENSE`。
 
@@ -57,6 +57,13 @@
 - 外层的 WHERE、GROUP BY、ORDER BY、LIMIT 作用在合并之后的结果上，别名固定是 `u`。列名沿用第一条分支。没有单独勾选字段时，SELECT 是 `u.*`。
 - 这一组不能再拉 JOIN。普通表卡片不能用 ∪。窗口函数、CTE、`EXISTS` 仍然要写在卡片里的 SQL 中。
 
+### 2026-10-22　1.1.4
+
+- 顶栏「中文」旁边可以切换浅色和深色，选择会记住。
+- SELECT 切到 SQL 后，字段按最外层的逗号分成一行一个。函数括号里的逗号不会被拆开。
+- 点「按列分开算」，先点下面某一行，整行出现蓝条。再点 SUM、AVG、COUNT、MIN、MAX、ROW_NUMBER、RANK、DENSE_RANK、LAG、LEAD 里的一个，然后点字段名。这一行会写成 `SUM(字段) OVER (PARTITION BY 字段)`。ROW_NUMBER、RANK、DENSE_RANK 不套字段，写成 `ROW_NUMBER() OVER (PARTITION BY 字段)`。
+- 删掉一组表之后，UNION ALL 的连线和文字会一起消失。
+
 ## 运行
 
 需要 Node.js 20 或更新版本。
@@ -80,7 +87,7 @@ npm run desktop
 
 ## 版本
 
-版本号只写在 `node_app/package.json` 的 `version`。页面标题、右上角、关于窗口、保存的场景，以及安装包文件名都读这个号。当前源码版本是 1.1.3。
+版本号只写在 `node_app/package.json` 的 `version`。页面标题、右上角、关于窗口、保存的场景，以及安装包文件名都读这个号。当前源码版本是 1.1.4。
 
 ## 安装包
 

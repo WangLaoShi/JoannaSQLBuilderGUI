@@ -71,7 +71,7 @@ const SqlBackdrop = (() => {
         null,
         'rgba(253,216,53,0.22)',   // 1 — yellow
         'rgba(67,160,71,0.22)',    // 2 — green
-        'rgba(30,136,229,0.22)',   // 3 — blue
+        'rgba(30,136,229,0.38)',   // 3 — blue
         'rgba(229,57,53,0.22)',    // 4 — red
     ];
 
@@ -845,6 +845,15 @@ const SqlBackdrop = (() => {
        Call this after the host element becomes visible or after setting
        ta.value programmatically (which doesn't fire an input event).
     ------------------------------------------------------------------------- */
+    function markLine(ta, lineIndex) {
+        const h = _map.get(ta);
+        if (!h) return;
+        h.activeWord = null;
+        h.lineColors = {};
+        if (lineIndex != null && lineIndex >= 0) h.lineColors[lineIndex] = 3;
+        _update(ta, h.pre);
+    }
+
     function refresh(ta) {
         const h = _map.get(ta);
         if (!h) return;
@@ -1025,7 +1034,7 @@ const SqlBackdrop = (() => {
         _update(ta, h.pre);
     }
 
-    return { attach, detach, init, refresh, toggleScopeMode, setExclusiveMode,
+    return { attach, detach, init, refresh, markLine, toggleScopeMode, setExclusiveMode,
              setEscClearsScope, setScopeToggleShortcut,
              collectAnnotations, applyAnnotations, transferAnnotations,
              refreshBookmarks, refreshAllBookmarks,
