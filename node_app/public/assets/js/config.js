@@ -3248,8 +3248,21 @@ const QueryPanel = (() => {
         const parts = [];
         let depth = 0;
         let cur   = '';
-        for (const ch of raw) {
-            if      (ch === '(' || ch === '[') { depth++; cur += ch; }
+        let quote = null;
+        for (let i = 0; i < raw.length; i++) {
+            const ch = raw[i];
+            if (quote) {
+                cur += ch;
+                if (ch === '\\' && quote !== '`' && i + 1 < raw.length) {
+                    cur += raw[++i];
+                } else if (ch === quote) {
+                    if (raw[i + 1] === quote) cur += raw[++i];
+                    else quote = null;
+                }
+            } else if (ch === "'" || ch === '"' || ch === '`') {
+                quote = ch;
+                cur += ch;
+            } else if (ch === '(' || ch === '[') { depth++; cur += ch; }
             else if (ch === ')' || ch === ']') { depth--; cur += ch; }
             else if (ch === ',' && depth === 0) { parts.push(cur); cur = ''; }
             else cur += ch;

@@ -192,3 +192,39 @@ test('a union group rejects a join, a column-count mismatch, and a cycle shape',
     limit: 10,
   }), /cannot also contain a join/);
 });
+
+test('SJ-014: frontend and backend preserve SELECT quoted commas', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const { runInNewContext } = await import('node:vm');
+  const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)),
+    '../public/assets/js/config.js'), 'utf8');
+  const front = runInNewContext(source + '\nQueryPanel', {
+    document: { addEventListener() {} }, window: {},
+    State: { tables: [], joins: [], columnOrder: [], selectAliases: {} },
+    App: { computeIslands: tables => [tables.map(table => table.id)] },
+  }, { filename: 'config.js', timeout: 5000 });
+  const cases = [
+    ["'A,B' AS label", "'A,B' AS label"],
+    ["c.c_id, 'A,B' AS label", "'A,B' AS label"],
+    ["'It''s,a' AS label, c.c_id", "'It''s,a' AS label"],
+    ["c.`last,first` AS label, c.c_id", 'c.`last,first` AS label'],
+    ["COALESCE(c.c_name, 'A,B') AS label, c.c_id", "COALESCE(c.c_name, 'A,B') AS label"],
+    ["ROW_NUMBER() OVER (PARTITION BY c.c_id ORDER BY c.c_id) AS rn, c.c_id", 'ROW_NUMBER() OVER'],
+  ];
+  for (const [raw, atom] of cases) for (const sortAlpha of [false, true]) {
+    const state = {
+      tables: [course], joins: [], unions: [], select: [], columnOrder: [],
+      selectedIslandKey: 't1',
+      selectMode: 'raw', selectRaw: raw, selectSortAlpha: sortAlpha,
+      selectAddDelimiter: false, selectDistinct: false,
+      selectAliases: {}, selectCustomExprs: [], selectCustomExprsMode: 'exclude',
+      where: [], groupBy: [], having: [], orderBy: [], limit: 10,
+    };
+    const preview = front.buildSQL(state).split('\nFROM\n')[0];
+    const executed = assembleQuery(state).sql.split('\nFROM\n')[0];
+    assert.equal(preview, executed, `SELECT mismatch for ${JSON.stringify(raw)}`);
+    assert.ok(executed.includes(atom), `SELECT lost ${JSON.stringify(atom)}`);
+  }
+});
