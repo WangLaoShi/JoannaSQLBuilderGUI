@@ -1,6 +1,6 @@
 # JoannaSQLBuilderGUI
 
-这是 SQL Joiner 的 Node 版本，GitHub 仓库名是 JoannaSQLBuilderGUI，当前版本 **1.1.4**。代码放在 `node_app/`。学生不需要安装 PHP。本机起一个服务，浏览器或安装包打开同一套拖拽画布，用它连接 MySQL，把 SELECT 查询搭出来再运行。
+这是 SQL Joiner 的 Node 版本，GitHub 仓库名是 JoannaSQLBuilderGUI，当前版本 **1.1.5**。代码放在 `node_app/`。学生不需要安装 PHP。本机起一个服务，浏览器或安装包打开同一套拖拽画布，用它连接 MySQL，把 SELECT 查询搭出来再运行。
 
 窗口标题仍显示 SQL Joiner。原来的 PHP 版本仍在 `app/`，说明见根目录的 `README.md`。协议是 GPL-3.0-or-later，见 `LICENSE`。
 
@@ -57,6 +57,13 @@
 - 外层的 WHERE、GROUP BY、ORDER BY、LIMIT 作用在合并之后的结果上，别名固定是 `u`。列名沿用第一条分支。没有单独勾选字段时，SELECT 是 `u.*`。
 - 这一组不能再拉 JOIN。普通表卡片不能用 ∪。窗口函数、CTE、`EXISTS` 仍然要写在卡片里的 SQL 中。
 
+### 2026-10-25　1.1.5
+
+- 安装后的图标和窗口右上角换成走鹃剪影。
+- 「按列分开算」分成聚合和窗口两行。聚合写成 `SUM(字段)`，没有 `OVER`。窗口那一行才加 `OVER (PARTITION BY 字段)`。
+- 表名和字段名可以带空格或连字符。拖上画布和生成 SQL 时用反引号包住，例如 `` `market data` ``、`` `fixed acidity` ``。
+- 把「明细表 INNER JOIN 分组子查询」导入画布时，子查询选出的别名（如 `avg_price`）会登记到卡片上，外层别名保持原来的大小写。
+
 ### 2026-10-22　1.1.4
 
 - 顶栏「中文」旁边可以切换浅色和深色，选择会记住。
@@ -87,7 +94,7 @@ npm run desktop
 
 ## 版本
 
-版本号只写在 `node_app/package.json` 的 `version`。页面标题、右上角、关于窗口、保存的场景，以及安装包文件名都读这个号。当前源码版本是 1.1.4。
+版本号只写在 `node_app/package.json` 的 `version`。页面标题、右上角、关于窗口、保存的场景，以及安装包文件名都读这个号。当前源码版本是 1.1.5。
 
 ## 安装包
 

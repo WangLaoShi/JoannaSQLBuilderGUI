@@ -1,9 +1,14 @@
 import { HttpError } from './errors.js';
+import { assertTableName, quoteIdent } from './ident.js';
 
 const SYSTEM_DBS = new Set(['information_schema', 'performance_schema', 'mysql', 'sys']);
 
 function assertIdent(value, label) {
   if (!/^\w+$/.test(String(value))) throw new HttpError(`Invalid ${label}.`, 400);
+}
+
+function quoteSqlite(name) {
+  return '"' + String(name).replaceAll('"', '""') + '"';
 }
 
 function shortType(type) {
@@ -32,9 +37,9 @@ export async function mysqlTables(db, database) {
 
 export async function mysqlColumns(db, table, database = '') {
   if (!table) throw new HttpError('table is required.', 400);
-  assertIdent(table, 'table name');
+  assertTableName(table);
   if (database) assertIdent(database, 'database name');
-  const ref = database ? `\`${database}\`.\`${table}\`` : `\`${table}\``;
+  const ref = database ? `${quoteIdent(database)}.${quoteIdent(table)}` : quoteIdent(table);
   const { rows } = await db.query(`DESCRIBE ${ref}`);
   return rows.map(col => ({
     name: col[0],
@@ -49,9 +54,9 @@ export async function mysqlColumns(db, table, database = '') {
 
 export async function mysqlCreate(db, table, database = '') {
   if (!table) throw new HttpError('table is required.', 400);
-  assertIdent(table, 'table name');
+  assertTableName(table);
   if (database) assertIdent(database, 'database name');
-  const ref = database ? `\`${database}\`.\`${table}\`` : `\`${table}\``;
+  const ref = database ? `${quoteIdent(database)}.${quoteIdent(table)}` : quoteIdent(table);
   const { rows } = await db.query(`SHOW CREATE TABLE ${ref}`);
   let ddl = rows[0]?.[1] ?? '';
   if (database && ddl) ddl = ddl.replace(/^(CREATE TABLE\s+)`/, `$1\`${database}\`.\``);
@@ -61,7 +66,7 @@ export async function mysqlCreate(db, table, database = '') {
 export async function mysqlRowCounts(db, tables, database = '') {
   if (!Array.isArray(tables) || !tables.length) throw new HttpError('tables array is required.', 400);
   for (const t of tables) {
-    if (!/^\w+$/.test(String(t))) throw new HttpError(`Invalid table name: ${t}`, 400);
+    assertTableName(t);
   }
   if (database && !/^\w+$/.test(database)) throw new HttpError('Invalid database name.', 400);
   if (!database) {
@@ -89,8 +94,8 @@ export async function sqliteTables(db) {
 
 export async function sqliteColumns(db, table) {
   if (!table) throw new HttpError('table is required.', 400);
-  assertIdent(table, 'table name');
-  const { rows } = await db.query(`PRAGMA table_info("${table}")`);
+  assertTableName(table);
+  const { rows } = await db.query(`PRAGMA table_info(${quoteSqlite(table)})`);
   if (!rows.length) throw new HttpError(`Table '${table}' not found.`, 404);
   return rows.map(col => ({
     name: col[1],
@@ -105,7 +110,7 @@ export async function sqliteColumns(db, table) {
 
 export async function sqliteCreate(db, table) {
   if (!table) throw new HttpError('table is required.', 400);
-  assertIdent(table, 'table name');
+  assertTableName(table);
   const { rows } = await db.query(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = '${table.replaceAll("'", "''")}'`);
   if (!rows.length || rows[0][0] == null) throw new HttpError(`Table '${table}' not found.`, 404);
   return { ddl: rows[0][0] };
@@ -115,8 +120,8 @@ export async function sqliteRowCounts(db, tables) {
   if (!Array.isArray(tables) || !tables.length) throw new HttpError('tables array is required.', 400);
   const counts = {};
   for (const table of tables) {
-    if (!/^\w+$/.test(String(table))) throw new HttpError(`Invalid table name: ${table}`, 400);
-    const { rows } = await db.query(`SELECT COUNT(*) FROM "${table}"`);
+    assertTableName(table);
+    const { rows } = await db.query(`SELECT COUNT(*) FROM ${quoteSqlite(table)}`);
     counts[table] = Number(rows[0]?.[0] ?? 0);
   }
   return counts;

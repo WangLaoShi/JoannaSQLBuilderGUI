@@ -1,6 +1,6 @@
 {
   "name": "sql-joiner-node",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "private": true,
   "description": "SQL Joiner without PHP. A local Node server speaks MySQL, serves the same canvas, and Electron installs it for students.",
   "license": "GPL-3.0-or-later",
@@ -30,9 +30,11 @@
     "mac": {
       "category": "public.app-category.education",
       "identity": null,
+      "icon": "build/icon.icns",
       "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }]
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         { "target": "nsis", "arch": ["x64"] },
         { "target": "zip", "arch": ["x64"] }

@@ -4,6 +4,7 @@
  * with the PHP builder without a live server.
  */
 import { HttpError } from './errors.js';
+import { assertTableName } from './ident.js';
 
 const MAX_LIMIT = 5000;
 const WHERE_OPS = ['=', '!=', '<', '>', '<=', '>=', 'LIKE', 'NOT LIKE', 'IS NULL', 'IS NOT NULL', 'IN', 'NOT IN', 'BETWEEN', 'NOT BETWEEN'];
@@ -20,6 +21,32 @@ const ident = /^\w+$/;
 
 function esc(name) {
   return String(name).replaceAll('`', '``');
+}
+
+function isAliasCol(key) {
+  const m = String(key).match(/^(\w+)\.(.+)$/);
+  return !!m && m[2] !== '' && m[2].length <= 64 && !/[\0\r\n`]/.test(m[2]);
+}
+
+function selectExpr(key) {
+  if (!isAliasCol(key)) return '';
+  const text = String(key);
+  const dot = text.indexOf('.');
+  const alias = text.slice(0, dot);
+  const name = text.slice(dot + 1);
+  if (name === '*') return `${alias}.*`;
+  return `${alias}.${col(name)}`;
+}
+
+function clauseCol(key) {
+  const text = String(key);
+  if (/^\w+$/.test(text)) return text;
+  if (!isAliasCol(text)) return '';
+  const dot = text.indexOf('.');
+  const alias = text.slice(0, dot);
+  const name = text.slice(dot + 1);
+  if (/^\w+$/.test(name)) return `${alias}.${name}`;
+  return `${alias}.${col(name)}`;
 }
 
 const READ_START = /^(select|with|explain|show|describe|desc|pragma)\b/i;
@@ -143,9 +170,9 @@ function buildSelect(select, addDelimiter, selectAliases, sortAlpha) {
       cols.push({ alias: m[1], sortkey: m[1], expr: `${m[1]}.*` });
       continue;
     }
-    m = text.match(/^(\w+)\.(\w+)$/);
-    if (!m) continue;
-    let expr = `${m[1]}.\`${esc(m[2])}\``;
+    m = text.match(/^(\w+)\.(.+)$/);
+    if (!m || !isAliasCol(text)) continue;
+    let expr = selectExpr(text);
     const colAlias = selectAliases[text] != null ? String(selectAliases[text]).trim() : '';
     if (colAlias !== '') expr += ` AS \`${esc(colAlias)}\``;
     cols.push({
@@ -371,11 +398,12 @@ function buildWhere(conditions, rawWhere, mode) {
       const op = String(cond.op ?? '=');
       const val = String(cond.val ?? '');
       if (!WHERE_OPS.includes(op)) continue;
-      if (!/^\w+(\.\w+)?$/.test(colName)) continue;
-      if (op === 'IS NULL' || op === 'IS NOT NULL') part = `${colName} ${op}`;
-      else if (op === 'IN' || op === 'NOT IN') part = `${colName} ${op} (${val.split(',').map(v => v.trim()).join(', ')})`;
-      else if (op === 'BETWEEN' || op === 'NOT BETWEEN') part = `${colName} ${op} ${val} AND ${cond.val2 ?? ''}`;
-      else part = `${colName} ${op} ${val}`;
+      if (!clauseCol(colName)) continue;
+      const colSql = clauseCol(colName);
+      if (op === 'IS NULL' || op === 'IS NOT NULL') part = `${colSql} ${op}`;
+      else if (op === 'IN' || op === 'NOT IN') part = `${colSql} ${op} (${val.split(',').map(v => v.trim()).join(', ')})`;
+      else if (op === 'BETWEEN' || op === 'NOT BETWEEN') part = `${colSql} ${op} ${val} AND ${cond.val2 ?? ''}`;
+      else part = `${colSql} ${op} ${val}`;
     }
     if (cond.startGroup) part = `(${part}`;
     if (cond.endGroup) part = `${part})`;
@@ -392,14 +420,14 @@ function buildGroupBy(groupBy, rawText, mode) {
     const raw = rawText.trim();
     return raw !== '' ? `GROUP BY ${raw}` : '';
   }
-  const parts = (groupBy || []).map(String).filter(c => /^\w+\.\w+$/.test(c));
+  const parts = (groupBy || []).map(c => clauseCol(c)).filter(Boolean);
   return parts.length ? `GROUP BY ${parts.join(', ')}` : '';
 }
 
 function havingRef(cond) {
   const colName = String(cond?.col ?? '');
   if (cond?.kind === 'agg') return /^\w+$/.test(colName) ? colName : '';
-  return /^\w+\.\w+$/.test(colName) ? colName : '';
+  return clauseCol(colName);
 }
 
 function buildHaving(conditions, rawHaving, mode) {
@@ -428,10 +456,11 @@ function buildOrderBy(orderBy, rawText, mode) {
   const parts = [];
   for (const item of orderBy || []) {
     const colName = String(item.col ?? '');
-    if (!/^\w+\.\w+$/.test(colName)) continue;
+    const ref = clauseCol(colName);
+    if (!ref) continue;
     let dir = String(item.dir || 'ASC').toUpperCase();
     if (dir !== 'ASC' && dir !== 'DESC') dir = 'ASC';
-    parts.push(`${colName} ${dir}`);
+    parts.push(`${ref} ${dir}`);
   }
   return parts.length ? `ORDER BY ${parts.join(', ')}` : '';
 }
@@ -486,7 +515,7 @@ export function assembleQuery(state, opts = {}) {
   const selectAliases = state.selectAliases || {};
 
   const fillFromOrderOrTables = () => {
-    if (columnOrder.length) return columnOrder.filter(k => /^\w+\.\w+$/.test(String(k)));
+    if (columnOrder.length) return columnOrder.filter(k => isAliasCol(k));
     return expandFromTables(tables);
   };
 
@@ -499,7 +528,7 @@ export function assembleQuery(state, opts = {}) {
   if (!select.length && selectMode !== 'raw' && columnOrder.length) {
     const defaultOrder = expandFromTables(tables);
     const same = columnOrder.length === defaultOrder.length && columnOrder.every((v, i) => v === defaultOrder[i]);
-    if (!same) select = columnOrder.filter(k => /^\w+\.\w+$/.test(String(k)));
+    if (!same) select = columnOrder.filter(k => isAliasCol(k));
   }
 
   for (const t of tables) {
@@ -507,7 +536,7 @@ export function assembleQuery(state, opts = {}) {
       if (!ident.test(String(t.alias ?? ''))) throw new HttpError(`Invalid table alias: ${t.alias ?? ''}`, 400);
       continue;
     }
-    if (!ident.test(String(t.name ?? ''))) throw new HttpError(`Invalid table name: ${t.name ?? ''}`, 400);
+    assertTableName(t.name);
     if (!ident.test(String(t.alias ?? ''))) throw new HttpError(`Invalid table alias: ${t.alias ?? ''}`, 400);
     if (t.database && !ident.test(String(t.database))) throw new HttpError(`Invalid database name: ${t.database}`, 400);
   }

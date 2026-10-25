@@ -100,7 +100,20 @@ test('HAVING can filter a SELECT aggregate by its alias', () => {
 
 test('limit is capped and unsafe identifiers are rejected', () => {
   assert.match(assembleQuery({ tables: [course], limit: 9000 }).sql, /LIMIT 5000/);
-  assert.throws(() => assembleQuery({ tables: [{ id: 'x', name: 'bad-name', alias: 'b' }] }), /Invalid table name/);
+  assert.throws(() => assembleQuery({ tables: [{ id: 'x', name: 'bad`name', alias: 'b' }] }), /Invalid table name/);
+  assert.match(
+    assembleQuery({ tables: [{ id: 'x', name: 'market data', alias: 'md', database: 'task06' }] }).sql,
+    /FROM\n\t`task06`\.`market data` md/,
+  );
+  assert.match(
+    assembleQuery({
+      tables: [{ id: 'w', name: 'winequality-red', alias: 'w', columns: [{ name: 'fixed acidity' }, { name: 'quality' }] }],
+      select: ['w.fixed acidity', 'w.quality'],
+      where: [{ col: 'w.fixed acidity', op: '>', val: '7', enabled: true }],
+      limit: 10,
+    }).sql,
+    /SELECT\n\tw\.`fixed acidity`,\n\tw\.`quality`[\s\S]*FROM\n\t`winequality-red` w\nWHERE\n\t    w\.`fixed acidity` > 7/,
+  );
   assert.equal(containsVariables('SET @age = 1; SELECT @age'), true);
   assert.equal(containsVariables("SELECT name FROM t WHERE name LIKE 'a@b'"), false);
 });
@@ -131,6 +144,33 @@ test('parser keeps a simple join visual and forces aggregate HAVING to raw', () 
   assert.equal(parsed.whereConditions[0].val, "'猴%'");
   assert.equal(parsed.whereConditions[1].type, 'raw');
   assert.match(parsed.whereConditions[1].expr, /SELECT id FROM dropped/);
+});
+
+test('a grouped subquery join keeps detail rows and the aggregate column', () => {
+  const parsed = parseSql(`
+    SELECT P1.product_id, P1.product_name, P1.product_type, P1.sale_price, P2.avg_price
+    FROM product AS P1
+    INNER JOIN (
+      SELECT product_type, AVG(sale_price) AS avg_price
+      FROM product
+      GROUP BY product_type
+    ) AS P2
+    ON P1.product_type = P2.product_type
+  `);
+  assert.equal(parsed.tables[0].alias, 'P1');
+  assert.equal(parsed.tables[0].name, 'product');
+  assert.equal(parsed.tables[1].isSubquery, true);
+  assert.equal(parsed.tables[1].alias, 'P2');
+  assert.deepEqual(parsed.tables[1].columns.map(c => c.name), ['product_type', 'avg_price']);
+  assert.match(parsed.tables[1].subquery, /AVG\(sale_price\) AS avg_price/);
+  assert.equal(parsed.joins[0].type, 'INNER');
+  assert.equal(parsed.joins[0].fromCol, 'product_type');
+  assert.equal(parsed.joins[0].toCol, 'product_type');
+  assert.deepEqual(parsed.select, [
+    'P1.product_id', 'P1.product_name', 'P1.product_type', 'P1.sale_price', 'P2.avg_price',
+  ]);
+  assert.deepEqual(parsed.selectCustomExprs, []);
+  assert.deepEqual(parsed.groupBy, []);
 });
 
 test('two subquery cards combine with UNION ALL and the outer alias is u', () => {

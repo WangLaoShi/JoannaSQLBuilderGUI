@@ -88,16 +88,16 @@ const QueryPanel = (() => {
 
         document.getElementById('btn-select-window')?.addEventListener('click', () => {
             const box = document.getElementById('select-window-cols');
-            const fns = document.getElementById('select-window-fns');
             if (!box) return;
             const opening = box.classList.contains('hidden');
-            box.classList.toggle('hidden');
-            fns?.classList.toggle('hidden', box.classList.contains('hidden'));
+            _setFnBarsOpen(!opening ? false : true);
             if (opening) {
                 if (typeof UndoRedo !== 'undefined') UndoRedo.snapshot();
                 _ensureSelectLines();
                 _normalizeSelectRaw();
                 _windowLine = null;
+                _fnKind = 'agg';
+                _windowFn = 'SUM';
                 _fillWindowCols();
             }
         });
@@ -1810,9 +1810,20 @@ const QueryPanel = (() => {
      * runs that belong to different table aliases.
      * e.g. ['t1.a','t1.b','t2.c'] → "t1.a, t1.b, '|||', t2.c"
      */
+    function _quoteColKey(key) {
+        const text = String(key ?? '');
+        const dot = text.indexOf('.');
+        if (dot <= 0) return text;
+        const alias = text.slice(0, dot);
+        const name = text.slice(dot + 1);
+        if (!/^\w+$/.test(alias) || name === '' || name === '*' || /^\w+$/.test(name)) return text;
+        return `${alias}.\`${name.replaceAll('`', '``')}\``;
+    }
+
     function _colWithAlias(key) {
+        const expr = _quoteColKey(key);
         const sqlAlias = (State.selectAliases || {})[key];
-        return sqlAlias ? `${key} AS ${sqlAlias}` : key;
+        return sqlAlias ? `${expr} AS ${sqlAlias}` : expr;
     }
 
     function _injectDelimiters(cols) {
@@ -2467,7 +2478,7 @@ const QueryPanel = (() => {
     function _havingSqlPart(cond) {
         const target = cond.kind === 'agg'
             ? (/^\w+$/.test(cond.col || '') ? cond.col : '')
-            : cond.col;
+            : _quoteColKey(cond.col);
         if (!target) return '';
         if (cond.op === 'IS NULL') return `${target} IS NULL`;
         if (cond.op === 'IS NOT NULL') return `${target} IS NOT NULL`;
@@ -3049,9 +3060,30 @@ const QueryPanel = (() => {
      */
     /** Line the user clicked in the SELECT box while "Partition by column" is open. */
     let _windowLine = null;
-    /** Window function wrapped around that line. OVER alone is not a function. */
+    /** agg writes SUM(column). window writes SUM(column) OVER (PARTITION BY column). */
+    let _fnKind = 'agg';
     let _windowFn = 'SUM';
+    const _AGG_FNS = ['COUNT(*)', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX'];
     const _WINDOW_FNS = ['SUM', 'AVG', 'COUNT', 'MIN', 'MAX', 'ROW_NUMBER', 'RANK', 'DENSE_RANK', 'LAG', 'LEAD'];
+
+    function _setFnBarsOpen(open) {
+        ['select-agg-block', 'select-window-block', 'select-window-cols'].forEach(id => {
+            document.getElementById(id)?.classList.toggle('hidden', !open);
+        });
+    }
+
+    function _keepSelectAlias(expr) {
+        const body = String(expr || '').trim().replace(/,\s*$/, '');
+        const asMatch = body.match(/\s+AS\s+(`?\w+`?)\s*$/i);
+        return asMatch ? asMatch[0] : '';
+    }
+
+    function _withAggregate(expr, fn, col) {
+        const alias = _keepSelectAlias(expr);
+        if (fn === 'COUNT(*)') return `COUNT(*)${alias}`;
+        if (!col) return null;
+        return `${fn}(${col})${alias}`;
+    }
 
     /**
      * One top-level SELECT expression per line. Commas inside () stay put.
@@ -3152,32 +3184,34 @@ const QueryPanel = (() => {
         ta.setSelectionRange(pos, end);
         if (typeof SqlBackdrop !== 'undefined') SqlBackdrop.markLine(ta, idx);
         const box = document.getElementById('select-window-cols');
-        const fns = document.getElementById('select-window-fns');
         if (box?.classList.contains('hidden')) {
-            box.classList.remove('hidden');
-            fns?.classList.remove('hidden');
+            _setFnBarsOpen(true);
             _fillWindowCols();
         }
     }
 
-    function _fillWindowFns() {
-        const box = document.getElementById('select-window-fns');
+    function _fillFnRow(box, fns, kind) {
         if (!box) return;
         box.textContent = '';
-        _WINDOW_FNS.forEach(fn => {
+        fns.forEach(fn => {
             const b = document.createElement('button');
             b.type = 'button';
-            b.className = 'select-window-fn' + (fn === _windowFn ? ' is-active' : '');
+            b.className = 'select-window-fn' + (kind === _fnKind && fn === _windowFn ? ' is-active' : '');
             b.textContent = fn;
-            b.title = 'Window function';
+            b.title = kind === 'agg' ? 'Ordinary aggregate' : 'Window function';
             b.addEventListener('click', () => {
+                _fnKind = kind;
                 _windowFn = fn;
-                box.querySelectorAll('button').forEach(el => {
-                    el.classList.toggle('is-active', el.textContent === fn);
-                });
+                _fillWindowFns();
+                if (fn === 'COUNT(*)') _applyAggregate(null, null);
             });
             box.appendChild(b);
         });
+    }
+
+    function _fillWindowFns() {
+        _fillFnRow(document.getElementById('select-agg-fns'), _AGG_FNS, 'agg');
+        _fillFnRow(document.getElementById('select-window-fns'), _WINDOW_FNS, 'window');
     }
 
     function _fillWindowCols() {
@@ -3195,7 +3229,10 @@ const QueryPanel = (() => {
                 b.type = 'button';
                 b.className = 'select-window-col';
                 b.textContent = `${t.alias}.${name}`;
-                b.addEventListener('click', () => _applyWindowPartition(t.alias, name));
+                b.addEventListener('click', () => {
+                    if (_fnKind === 'agg') _applyAggregate(t.alias, name);
+                    else _applyWindowPartition(t.alias, name);
+                });
                 box.appendChild(b);
             });
         });
@@ -3205,6 +3242,46 @@ const QueryPanel = (() => {
             p.textContent = 'Add a table to the canvas first.';
             box.appendChild(p);
         }
+    }
+
+    function _writeSelectLine(ta, parts, idx) {
+        const next = parts.join(',\n');
+        ta.value = next;
+        State.selectRaw = next;
+        const lines = next.split('\n');
+        let pos = 0;
+        for (let i = 0; i < idx && i < lines.length; i++) pos += lines[i].length + 1;
+        const end = pos + (lines[idx] || '').length;
+        _windowLine = idx;
+        ta.focus();
+        ta.setSelectionRange(pos, end);
+        if (typeof SqlBackdrop !== 'undefined') {
+            SqlBackdrop.refresh(ta);
+            SqlBackdrop.markLine(ta, idx);
+        }
+        App.updateSQLPreview?.();
+    }
+
+    function _applyAggregate(alias, name) {
+        const ta = document.getElementById('select-raw-input');
+        if (!ta) return;
+        const col = alias ? _quoteExprCol(alias, name) : null;
+        if (_windowFn !== 'COUNT(*)' && !col) return;
+        _ensureSelectLines();
+        _normalizeSelectRaw();
+        const parts = _splitSelectExprs(ta.value).map(s => s.trim()).filter(Boolean);
+        let idx = _windowLine;
+        const current = idx != null && idx >= 0 && idx < parts.length ? parts[idx] : '';
+        const nextExpr = _withAggregate(current, _windowFn, col);
+        if (!nextExpr) return;
+        if (typeof UndoRedo !== 'undefined') UndoRedo.snapshot();
+        if (current) {
+            parts[idx] = nextExpr;
+        } else {
+            parts.push(nextExpr);
+            idx = parts.length - 1;
+        }
+        _writeSelectLine(ta, parts, idx);
     }
 
     function _applyWindowPartition(alias, name) {
@@ -3547,11 +3624,12 @@ const QueryPanel = (() => {
         // Helper: produce `db`.`table` for normal tables, or (subquery SQL) for subquery tables.
         // Drop a trailing semicolon: it is valid on the card's own Run, but illegal inside FROM ( ... ).
         const subquerySql = sql => String(sql ?? '').trim().replace(/;+\s*$/, '').trim();
+        const quoteIdent = name => '`' + String(name).replaceAll('`', '``') + '`';
         const tableRef = t => t.isSubquery && t.subquery?.trim()
             ? `(${subquerySql(t.subquery)})`
             : t.database
-                ? `\`${t.database}\`.\`${t.name}\``
-                : t.name;
+                ? `${quoteIdent(t.database)}.${quoteIdent(t.name)}`
+                : quoteIdent(t.name);
 
         // Strip disabled joins — excluded from SQL and connectivity
         const enabledJoins = state.joins.filter(j => j.enabled !== false);
@@ -3674,16 +3752,16 @@ const QueryPanel = (() => {
                         if (!expr) return;
                         part = /^select\s/i.test(expr) ? `(${expr})` : expr;
                         part = _u(part);
-                    } else if (c.op === 'IS NULL')     { part = `${_u(c.col)} IS NULL`; }
-                    else if (c.op === 'IS NOT NULL')   { part = `${_u(c.col)} IS NOT NULL`; }
+                    } else if (c.op === 'IS NULL')     { part = `${_u(_quoteColKey(c.col))} IS NULL`; }
+                    else if (c.op === 'IS NOT NULL')   { part = `${_u(_quoteColKey(c.col))} IS NOT NULL`; }
                     else if (c.op === 'IN' || c.op === 'NOT IN') {
                         const vals = String(c.val ?? '').split(',').map(v => v.trim()).filter(v => v !== '');
-                        part = `${_u(c.col)} ${c.op} (${vals.join(', ')})`;
+                        part = `${_u(_quoteColKey(c.col))} ${c.op} (${vals.join(', ')})`;
                     } else if (c.op === 'BETWEEN' || c.op === 'NOT BETWEEN') {
-                        part = `${_u(c.col)} ${c.op} ${String(c.val ?? '')} AND ${String(c.val2 ?? '')}`;
+                        part = `${_u(_quoteColKey(c.col))} ${c.op} ${String(c.val ?? '')} AND ${String(c.val2 ?? '')}`;
                     } else {
                         const v = String(c.val ?? '');
-                        part = `${_u(c.col)} ${c.op} ${v}`;
+                        part = `${_u(_quoteColKey(c.col))} ${c.op} ${v}`;
                     }
 
                     if (c.startGroup) part = '(' + part;
@@ -3715,7 +3793,7 @@ const QueryPanel = (() => {
         if (state.groupByMode === 'raw' && state.groupByRaw?.trim()) {
             sql += `\nGROUP BY ${_u(state.groupByRaw.trim())}`;
         } else if (state.groupBy?.length) {
-            sql += `\nGROUP BY ${state.groupBy.map(_u).join(', ')}`;
+            sql += `\nGROUP BY ${state.groupBy.map(c => _u(_quoteColKey(c))).join(', ')}`;
         }
 
         // --- HAVING ---
@@ -3730,7 +3808,7 @@ const QueryPanel = (() => {
         if (state.orderByMode === 'raw' && state.orderByRaw?.trim()) {
             sql += `\nORDER BY ${_u(state.orderByRaw.trim())}`;
         } else if (state.orderBy?.length) {
-            sql += `\nORDER BY ${state.orderBy.map(o => `${_u(o.col)} ${o.dir}`).join(', ')}`;
+            sql += `\nORDER BY ${state.orderBy.map(o => `${_u(_quoteColKey(o.col))} ${o.dir}`).join(', ')}`;
         }
 
         // --- LIMIT ---

@@ -1,6 +1,13 @@
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, Menu, nativeImage } from 'electron';
 import path from 'node:path';
 import { startServer } from '../server/index.js';
+
+function windowIcon() {
+  const image = nativeImage.createFromPath(
+    path.join(__dirname, '..', 'public', 'assets', 'img', 'icon.png')
+  );
+  return image.isEmpty() ? undefined : image;
+}
 
 let server;
 let quitting = false;
@@ -102,10 +109,12 @@ async function open() {
   const storageDir = path.join(app.getPath('userData'), 'storage');
   const started = await startServer({ port: 0, storageDir });
   server = started.server;
+  const icon = windowIcon();
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
     title: 'SQL Joiner',
+    ...(icon ? { icon } : {}),
     webPreferences: { contextIsolation: true, nodeIntegration: false },
   });
   // The page calls preventDefault() on beforeunload. In this desktop window
@@ -117,6 +126,8 @@ async function open() {
 }
 
 app.whenReady().then(() => {
+  const icon = windowIcon();
+  if (icon && process.platform === 'darwin') app.dock.setIcon(icon);
   installMenu();
   return open();
 });

@@ -148,6 +148,32 @@ function extractExprAndAlias(text) {
   return [text, ''];
 }
 
+function aliasAsWritten(raw, tables) {
+  const hit = tables.find(t => String(t.alias || '').toLowerCase() === String(raw).toLowerCase());
+  return hit ? hit.alias : raw;
+}
+
+function outputColumnNames(selectText) {
+  const names = [];
+  const seen = new Set();
+  for (let part of splitByTopLevelComma(selectText || '')) {
+    part = part.trim();
+    if (part === '') continue;
+    const bare = part.replaceAll('`', '').trim();
+    if (bare === '*' || /\.\*$/.test(bare)) continue;
+    const [expr, asAlias] = extractExprAndAlias(part);
+    let name = asAlias;
+    if (!name) {
+      const m = expr.replaceAll('`', '').trim().match(/^(?:\w+\.)?(\w+)$/);
+      if (m) name = m[1];
+    }
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    names.push(name);
+  }
+  return names;
+}
+
 function parseSelect(text, tables) {
   const rawText = text.trim();
   const parts = splitByTopLevelComma(text);
@@ -164,7 +190,7 @@ function parseSelect(text, tables) {
     const clean = part.replaceAll('`', '');
     let m = clean.match(/^(\w+)\.(\w+)(?:\s+AS\s+(\w+))?$/i);
     if (m) {
-      const key = `${m[1].toLowerCase()}.${m[2]}`;
+      const key = `${aliasAsWritten(m[1], tables)}.${m[2]}`;
       cols.push(key);
       if (m[3]) selectAliases[key] = m[3];
       continue;
@@ -282,12 +308,13 @@ function parseSubqueryTableRef(text) {
   const after = text.slice(closePos + 1).trim();
   const m = after.match(/^(?:AS\s+)?(\w+)$/i);
   if (!m) return null;
+  const columns = outputColumnNames(splitSections(subquerySql).select || '').map(name => ({ name }));
   return {
     id: hid('sq_', 5),
     name: m[1],
     alias: m[1],
     database: null,
-    columns: [],
+    columns,
     position: null,
     isSubquery: true,
     subquery: subquerySql,

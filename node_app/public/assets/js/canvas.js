@@ -1155,11 +1155,12 @@ const Canvas = (() => {
 
         // --- Copy buttons ---
         // For subquery tables these copy the subquery SQL itself
+        const quoteIdent = name => '`' + String(name).replaceAll('`', '``') + '`';
         const tableRef = tableData.isSubquery
             ? '(' + (tableData.subquery?.trim() || '…') + ')'
             : tableData.database
-                ? `${tableData.database}.${tableData.name}`
-                : tableData.name;
+                ? `${quoteIdent(tableData.database)}.${quoteIdent(tableData.name)}`
+                : quoteIdent(tableData.name);
 
         const _buildWhereForTable = alias => {
             const parts = [];

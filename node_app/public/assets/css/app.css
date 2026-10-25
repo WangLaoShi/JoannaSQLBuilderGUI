@@ -90,6 +90,18 @@ html[data-theme="light"] .table-card {
     gap: 6px;
     margin: 0 0 6px;
 }
+.select-fn-block {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+.select-fn-label {
+    flex: 0 0 auto;
+    min-width: 4.5em;
+    font-size: 11px;
+    color: var(--text-muted);
+}
 .select-window-fns {
     display: flex;
     flex-wrap: wrap;
@@ -381,12 +393,14 @@ h3 {
     align-items: center;
 }
 #app-logo {
-    width: 28px;
-    height: 28px;
+    width: 50px;
+    height: 22px;
     object-fit: contain;
     flex-shrink: 0;
-    border-radius: 5px;
     cursor: pointer;
+}
+html[data-theme="light"] #app-logo {
+    filter: brightness(0);
 }
 #app-logo-label {
     font-size: 8px;

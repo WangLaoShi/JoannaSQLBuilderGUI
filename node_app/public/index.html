@@ -7,8 +7,8 @@
     <script>
         try { if (localStorage.getItem('sqlj-theme') === 'light') document.documentElement.dataset.theme = 'light'; } catch (e) {}
     </script>
-    <link rel="stylesheet" href="assets/css/app.css?v=canvas22">
-    <link rel="icon" type="image/png" href="assets/img/logo.png">
+    <link rel="stylesheet" href="assets/css/app.css?v=agg1">
+    <link rel="icon" type="image/png" href="assets/img/icon.png?v=logo1">
 </head>
 <body>
 
@@ -68,7 +68,7 @@
             <div style="display: none;">
                 <div><span id="app-name">SQL Joiner</span> <span id="app-version">__APP_VERSION__</span></div>
             </div>
-            <img src="assets/img/logo.png" title="SQL Joiner __APP_VERSION__" id="app-logo">
+            <img src="assets/img/logo.png?v=logo1" title="SQL Joiner __APP_VERSION__" id="app-logo">
             <div id="app-logo-label">SQL Joiner <span id="app-version-label">__APP_VERSION__</span></div>
         </div>
     </header>
@@ -250,9 +250,16 @@
                 <div id="select-columns"></div>
                 <div id="select-raw" class="hidden">
                     <div class="select-window-bar">
-                        <button type="button" id="btn-select-window" title="Click a line in the box. A blue bar covers that whole line. Then click a window function and a column.">Partition by column</button>
-                        <p class="select-window-hint">Click a line in the box. A blue bar covers that whole line. Then click a window function and a column.</p>
-                        <div id="select-window-fns" class="select-window-fns hidden"></div>
+                        <button type="button" id="btn-select-window" title="Aggregate writes SUM(column). Window writes SUM(column) OVER (PARTITION BY column).">Partition by column</button>
+                        <p class="select-window-hint">Aggregate: click SUM, COUNT, AVG, MIN or MAX, then a column. That line becomes SUM(column), with no OVER. Window: click a line until the blue bar shows, then a function and a column.</p>
+                        <div id="select-agg-block" class="select-fn-block hidden">
+                            <span class="select-fn-label">Aggregate</span>
+                            <div id="select-agg-fns" class="select-window-fns"></div>
+                        </div>
+                        <div id="select-window-block" class="select-fn-block hidden">
+                            <span class="select-fn-label">Window</span>
+                            <div id="select-window-fns" class="select-window-fns"></div>
+                        </div>
                         <div id="select-window-cols" class="select-window-cols hidden"></div>
                     </div>
                     <textarea id="select-raw-input" rows="24" placeholder="e.g. u.id, u.name, COUNT(o.id) AS order_count" data-sql-backdrop></textarea>
