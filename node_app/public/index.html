@@ -7,7 +7,7 @@
     <script>
         try { if (localStorage.getItem('sqlj-theme') === 'light') document.documentElement.dataset.theme = 'light'; } catch (e) {}
     </script>
-    <link rel="stylesheet" href="assets/css/app.css?v=agg1">
+    <link rel="stylesheet" href="assets/css/app.css?v=page3">
     <link rel="icon" type="image/png" href="assets/img/icon.png?v=logo1">
 </head>
 <body>
@@ -215,6 +215,8 @@
                     <option value="100">100</option>
                     <option value="500">500</option>
                     <option value="1000">1000</option>
+                    <option value="all" title="No LIMIT. Every matching row is returned.">All rows</option>
+                    <option value="page" title="Return one page at a time. Set the page size on the result pager.">Pages</option>
                 </select>
             </div>
 
@@ -353,6 +355,22 @@
                 <button id="btn-results-fullscreen" title="Maximize results">⤢</button>
                 <button id="btn-toggle-results" title="Minimize results">▼</button>
             </div>
+        </div>
+        <div id="results-pager" class="hidden">
+            <div class="results-pager-nav">
+                <button type="button" id="btn-page-prev" title="Previous page">Previous</button>
+                <span id="results-page-label"></span>
+                <button type="button" id="btn-page-next" title="Next page">Next</button>
+            </div>
+            <label class="results-page-size"><span>Per page</span>
+                <select id="results-page-size">
+                    <option value="10">10</option>
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="500">500</option>
+                    <option value="1000">1000</option>
+                </select>
+            </label>
         </div>
         <div class="results-legend">
             <span id="legend-compare" class="hidden"><strong>Compare mode:</strong> click header to compare column · click cell to compare column · right-click cell to compare row</span>

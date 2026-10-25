@@ -7,6 +7,22 @@ import { HttpError } from './errors.js';
 import { assertTableName } from './ident.js';
 
 const MAX_LIMIT = 5000;
+const MAX_PAGE_SIZE = 1000;
+
+function limitClause(state) {
+  const mode = state.limitMode === 'all' || state.limitMode === 'page' ? state.limitMode : 'rows';
+  if (mode === 'all') return '';
+  if (mode === 'page') {
+    let size = Number.parseInt(state.pageSize, 10);
+    if (!Number.isFinite(size) || size <= 0) size = 100;
+    size = Math.min(size, MAX_PAGE_SIZE);
+    const page = Math.max(Number.parseInt(state.page, 10) || 1, 1);
+    const offset = (page - 1) * size;
+    return offset > 0 ? `LIMIT ${size} OFFSET ${offset}` : `LIMIT ${size}`;
+  }
+  const n = Math.min(Number.parseInt(state.limit ?? 10, 10) || 0, MAX_LIMIT);
+  return `LIMIT ${n}`;
+}
 const WHERE_OPS = ['=', '!=', '<', '>', '<=', '>=', 'LIKE', 'NOT LIKE', 'IS NULL', 'IS NOT NULL', 'IN', 'NOT IN', 'BETWEEN', 'NOT BETWEEN'];
 const HAVING_OPS = ['=', '!=', '<', '>', '<=', '>=', 'LIKE', 'NOT LIKE', 'IS NULL', 'IS NOT NULL', 'IN', 'NOT IN'];
 const JOIN_KEYWORDS = {
@@ -623,7 +639,6 @@ export function assembleQuery(state, opts = {}) {
     ? (state.orderBy || []).map(item => ({ ...item, col: rewrite(item.col) }))
     : (state.orderBy || []);
   const orderSql = buildOrderBy(orderInput, rewrite(String(state.orderByRaw ?? '')), state.orderByMode || 'visual');
-  const limit = Math.min(Number.parseInt(state.limit ?? 10, 10) || 0, MAX_LIMIT);
 
   if (unions) {
     const seen = new Set();
@@ -648,7 +663,10 @@ export function assembleQuery(state, opts = {}) {
   if (whereSql) lines.push(whereSql);
   if (groupBySql) lines.push(groupBySql);
   if (havingSql) lines.push(havingSql);
-  if (orderSql) lines.push(orderSql);
-  lines.push(`LIMIT ${limit}`);
+  if (!opts.forCount && orderSql) lines.push(orderSql);
+  if (!opts.forCount) {
+    const lim = limitClause(state);
+    if (lim) lines.push(lim);
+  }
   return { sql: lines.join('\n'), warnings };
 }

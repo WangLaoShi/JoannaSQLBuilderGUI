@@ -103,6 +103,9 @@ const State = {
     havingMode:  'visual',
 
     limit: 10,
+    limitMode: 'rows',
+    pageSize: 100,
+    page: 1,
     /** Tracks the UI display order of all available columns across all tables. */
     columnOrder: [],
 
@@ -1610,6 +1613,8 @@ const App = (() => {
             orderByRaw:         State.orderByRaw         ?? '',
             orderByMode:        State.orderByMode        ?? 'visual',
             limit:              State.limit              ?? 10,
+            limitMode:          State.limitMode === 'all' || State.limitMode === 'page' ? State.limitMode : 'rows',
+            pageSize:           State.pageSize           ?? 100,
             calculus:           (typeof Results !== 'undefined' && Results.calcGetState)
                                     ? (Results.calcGetState() ?? null)
                                     : null,
@@ -1646,7 +1651,11 @@ const App = (() => {
             orderByRaw:         snap.orderByRaw         ?? '',
             orderByMode:        snap.orderByMode        ?? 'visual',
             limit:              snap.limit              ?? 10,
+            limitMode:          snap.limitMode === 'all' || snap.limitMode === 'page' ? snap.limitMode : 'rows',
+            pageSize:           Math.min(Math.max(parseInt(snap.pageSize, 10) || 100, 1), 1000),
+            page:               1,
         });
+        _syncLimitSelect();
         if (_prevWhereMode === 'raw') {
             State.whereRaw  = _prevWhereRaw;
             State.whereMode = 'raw';
@@ -1716,6 +1725,8 @@ const App = (() => {
             having: [], havingRaw: '', havingMode: 'visual',
             orderBy: [], orderByRaw: '', orderByMode: 'visual',
             limit: State.limit ?? 10,
+            limitMode: State.limitMode === 'all' || State.limitMode === 'page' ? State.limitMode : 'rows',
+            pageSize: State.pageSize ?? 100,
             calculus: null,
         };
 
@@ -1755,7 +1766,10 @@ const App = (() => {
                 groupBy: [], groupByRaw: '', groupByMode: 'visual',
                 having: [], havingRaw: '', havingMode: 'visual',
                 orderBy: [], orderByRaw: '', orderByMode: 'visual',
-                limit: State.limit ?? 10, calculus: null,
+                limit: State.limit ?? 10,
+                limitMode: State.limitMode === 'all' || State.limitMode === 'page' ? State.limitMode : 'rows',
+                pageSize: State.pageSize ?? 100,
+                calculus: null,
             };
         });
 
@@ -1844,6 +1858,8 @@ const App = (() => {
             orderByRaw:         sources.map(s => s.orderByRaw ?? '').filter(Boolean).join(', '),
             orderByMode:        sources[0].orderByMode        ?? 'visual',
             limit:              sources[0].limit              ?? 10,
+            limitMode:          sources[0].limitMode === 'all' || sources[0].limitMode === 'page' ? sources[0].limitMode : 'rows',
+            pageSize:           sources[0].pageSize           ?? 100,
             calculus:           mergedCalculus,
         };
     }
@@ -1958,6 +1974,8 @@ const App = (() => {
                 orderByRaw:         source.orderByRaw         ?? '',
                 orderByMode:        source.orderByMode        ?? 'visual',
                 limit:              source.limit              ?? 10,
+                limitMode:          source.limitMode === 'all' || source.limitMode === 'page' ? source.limitMode : 'rows',
+                pageSize:           source.pageSize           ?? 100,
                 // Restore each fragment's own calculus from its pre-merge config.
                 // Never try to split the merged island's calculus by alias — each
                 // island owns its calculus session independently.
@@ -2184,6 +2202,14 @@ const App = (() => {
         })();
         const _filteredTables = State.tables.filter(t => _activeIslandIds.has(t.id));
         const _filteredJoins  = _enabledJoins.filter(j => _activeIslandIds.has(j.fromTableId) && _activeIslandIds.has(j.toTableId));
+
+        const keepPage = State.limitMode === 'page' && State._keepPage === true;
+        State._keepPage = false;
+        if (!keepPage) {
+            const was = State.page;
+            State.page = 1;
+            if (State.limitMode === 'page' && was !== 1) updateSQLPreview();
+        }
 
         const btn = document.getElementById('btn-run-query');
         btn.disabled    = true;
@@ -3517,6 +3543,8 @@ const App = (() => {
 
             // LIMIT
             limit:              parsed.limit ?? 10,
+            limitMode:          'rows',
+            page:               1,
 
             // Column order — rebuilt below from the table columns
             columnOrder:        [],
@@ -3552,18 +3580,7 @@ const App = (() => {
             });
         });
 
-        // Sync LIMIT dropdown
-        const limitSel = document.getElementById('limit-select');
-        if (limitSel) {
-            // Pick the closest available option value
-            const available = [...limitSel.options].map(o => parseInt(o.value, 10));
-            const target    = parsed.limit ?? 10;
-            const best      = available.reduce((prev, cur) =>
-                Math.abs(cur - target) < Math.abs(prev - target) ? cur : prev
-            );
-            limitSel.value = best;
-            State.limit    = best;
-        }
+        _snapLimitToOptions(parsed.limit ?? 10);
 
         // Initialize island config for the single imported island and activate it
         // (import always produces one connected set of tables)
@@ -3707,6 +3724,8 @@ const App = (() => {
             orderByRaw:         parsed.orderByRaw         ?? '',
             orderByMode:        hasVisualOrderBy ? 'visual' : (parsed.orderByRaw ? 'raw' : 'visual'),
             limit:              parsed.limit              ?? 10,
+            limitMode:          'rows',
+            pageSize:           State.pageSize ?? 100,
             calculus:           null,
         };
 
@@ -3715,17 +3734,7 @@ const App = (() => {
         State.selectedIslandKey     = newKey;
         _applyRightPaneSnapshot(newIslandSnap);
 
-        // Sync LIMIT dropdown to the new island's limit
-        const limitSel = document.getElementById('limit-select');
-        if (limitSel) {
-            const available = [...limitSel.options].map(o => parseInt(o.value, 10));
-            const target    = newIslandSnap.limit;
-            const best      = available.reduce((prev, cur) =>
-                Math.abs(cur - target) < Math.abs(prev - target) ? cur : prev
-            );
-            limitSel.value = best;
-            State.limit    = best;
-        }
+        _snapLimitToOptions(newIslandSnap.limit);
 
         // Rebuild canvas and refresh UI; then scroll to center the newly added island
         Canvas.rebuildFromState(State);
@@ -3801,6 +3810,9 @@ const App = (() => {
                 whereMode:      parsed.whereMode      ?? 'visual',
                 orderByMode:    parsed.orderByMode    ?? 'visual',
                 limit:          parsed.limit          ?? 10,
+                limitMode:      parsed.limitMode === 'all' || parsed.limitMode === 'page' ? parsed.limitMode : 'rows',
+                pageSize:       Math.min(Math.max(parseInt(parsed.pageSize, 10) || 100, 1), 1000),
+                page:           1,
                 activeDatabase: parsed.activeDatabase ?? State.activeDatabase ?? null,
                 notes:          parsed.notes          ?? '',
                 selectedIslandKey: parsed.selectedIslandKey ?? null,
@@ -3870,8 +3882,7 @@ const App = (() => {
                 _markActiveDb();
             }
 
-            // Update LIMIT dropdown to match
-            document.getElementById('limit-select').value = State.limit;
+            _syncLimitSelect();
 
             Canvas.rebuildFromState(State);
             _updateCanvasCount();
@@ -5228,12 +5239,64 @@ const App = (() => {
         return String(str).replace(/"/g, '&quot;');
     }
 
+    function _syncLimitSelect() {
+        const sel = document.getElementById('limit-select');
+        if (!sel) return;
+        if (State.limitMode === 'all' || State.limitMode === 'page') sel.value = State.limitMode;
+        else sel.value = String(State.limit ?? 10);
+        if (State.limitMode !== 'page') document.getElementById('results-pager')?.classList.add('hidden');
+    }
+
+    function _snapLimitToOptions(target) {
+        const sel = document.getElementById('limit-select');
+        const available = sel
+            ? [...sel.options].map(o => parseInt(o.value, 10)).filter(Number.isFinite)
+            : [];
+        const best = available.length
+            ? available.reduce((prev, cur) => Math.abs(cur - target) < Math.abs(prev - target) ? cur : prev)
+            : (Number.isFinite(target) ? target : 10);
+        State.limit = best;
+        State.limitMode = 'rows';
+        State.page = 1;
+        _syncLimitSelect();
+    }
+
+    function _runKeptPage() {
+        State._keepPage = true;
+        updateSQLPreview();
+        runQuery();
+    }
+
     function bindLimitSelect() {
         document.getElementById('limit-select')
             .addEventListener('change', e => {
-                State.limit = parseInt(e.target.value, 10);
+                const v = e.target.value;
+                if (v === 'all' || v === 'page') {
+                    State.limitMode = v;
+                    State.page = 1;
+                } else {
+                    State.limitMode = 'rows';
+                    State.limit = parseInt(v, 10);
+                }
+                if (v !== 'page') document.getElementById('results-pager')?.classList.add('hidden');
                 updateSQLPreview();
             });
+        document.getElementById('btn-page-prev')?.addEventListener('click', () => {
+            if (State.limitMode !== 'page' || State.page <= 1) return;
+            State.page -= 1;
+            _runKeptPage();
+        });
+        document.getElementById('btn-page-next')?.addEventListener('click', () => {
+            if (State.limitMode !== 'page') return;
+            State.page = Math.max(parseInt(State.page, 10) || 1, 1) + 1;
+            _runKeptPage();
+        });
+        document.getElementById('results-page-size')?.addEventListener('change', e => {
+            if (State.limitMode !== 'page') return;
+            State.pageSize = parseInt(e.target.value, 10) || 100;
+            State.page = 1;
+            _runKeptPage();
+        });
     }
 
     // -------------------------------------------------------------------------

@@ -122,7 +122,22 @@ export function createApp({ storageDir }) {
         const { sql } = assembleQuery(body, { forPreview: false });
         const key = String(req.headers['x-tab-id'] || '').replace(/[^\w-]/g, '').slice(0, 40);
         if (db.kind === 'mysql') active.set(key, { threadId: db.threadId });
-        return await runSelect(db, sql, req.headers['x-tab-id']);
+        const result = await runSelect(db, sql, req.headers['x-tab-id']);
+        if (body.limitMode === 'page') {
+          let pageSize = Number.parseInt(body.pageSize, 10);
+          if (!Number.isFinite(pageSize) || pageSize <= 0) pageSize = 100;
+          pageSize = Math.min(pageSize, 1000);
+          const page = Math.max(Number.parseInt(body.page, 10) || 1, 1);
+          result.page = page;
+          result.pageSize = pageSize;
+          try {
+            const { sql: base } = assembleQuery(body, { forCount: true });
+            const counted = await runSelect(db, `SELECT COUNT(*) AS n FROM (\n${base}\n) sqlj_n`, req.headers['x-tab-id']);
+            const total = Number(counted.rows?.[0]?.[0]);
+            if (Number.isFinite(total)) result.total = total;
+          } catch { /* the page still renders; next is enabled while the page is full */ }
+        }
+        return result;
       } finally {
         await db.close();
       }

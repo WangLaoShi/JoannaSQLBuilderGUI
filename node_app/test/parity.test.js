@@ -98,6 +98,38 @@ test('HAVING can filter a SELECT aggregate by its alias', () => {
   assert.match(sql, /HAVING\n\t    SUM_PRICE > 600/);
 });
 
+test('all rows omit LIMIT and pages use OFFSET', () => {
+  assert.doesNotMatch(assembleQuery({ tables: [course], limitMode: 'all', limit: 10 }).sql, /\bLIMIT\b/);
+  assert.match(
+    assembleQuery({ tables: [course], limitMode: 'page', pageSize: 100, page: 1 }).sql,
+    /LIMIT 100$/,
+  );
+  assert.match(
+    assembleQuery({
+      tables: [course],
+      limitMode: 'page',
+      pageSize: 100,
+      page: 2,
+      orderBy: [{ col: 'c.c_id', dir: 'DESC' }],
+    }).sql,
+    /ORDER BY c\.c_id DESC\nLIMIT 100 OFFSET 100$/,
+  );
+  assert.match(
+    assembleQuery({ tables: [course], limitMode: 'page', pageSize: 9000, page: 1 }).sql,
+    /LIMIT 1000$/,
+  );
+  const counted = assembleQuery({
+    tables: [course],
+    limitMode: 'page',
+    pageSize: 100,
+    page: 2,
+    orderBy: [{ col: 'c.c_id', dir: 'DESC' }],
+  }, { forCount: true });
+  assert.doesNotMatch(counted.sql, /\bLIMIT\b|\bOFFSET\b|\bORDER BY\b/);
+  assert.match(counted.sql, /FROM\n\t`course` c/);
+  assert.match(assembleQuery({ tables: [course], limit: 10 }).sql, /LIMIT 10$/);
+});
+
 test('limit is capped and unsafe identifiers are rejected', () => {
   assert.match(assembleQuery({ tables: [course], limit: 9000 }).sql, /LIMIT 5000/);
   assert.throws(() => assembleQuery({ tables: [{ id: 'x', name: 'bad`name', alias: 'b' }] }), /Invalid table name/);

@@ -3812,7 +3812,7 @@ const QueryPanel = (() => {
         }
 
         // --- LIMIT ---
-        sql += `\nLIMIT ${state.limit}`;
+        sql += _limitClause(state);
 
         return sql;
     }
@@ -3820,6 +3820,20 @@ const QueryPanel = (() => {
     // =========================================================================
     // Private helpers
     // =========================================================================
+    function _limitClause(state) {
+        if (state.limitMode === 'all') return '';
+        if (state.limitMode === 'page') {
+            let size = parseInt(state.pageSize, 10);
+            if (!Number.isFinite(size) || size <= 0) size = 100;
+            size = Math.min(size, 1000);
+            const page = Math.max(parseInt(state.page, 10) || 1, 1);
+            const offset = (page - 1) * size;
+            return offset > 0 ? `\nLIMIT ${size} OFFSET ${offset}` : `\nLIMIT ${size}`;
+        }
+        const n = parseInt(state.limit, 10);
+        return `\nLIMIT ${Number.isFinite(n) ? n : 10}`;
+    }
+
     function _esc(str) {
         return String(str ?? '')
             .replace(/&/g, '&amp;')

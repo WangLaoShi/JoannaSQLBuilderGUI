@@ -875,6 +875,28 @@ const Results = (() => {
      * Also updates the SQL preview bar with the server-generated SQL.
      * Always expands the panel so fresh results are immediately visible.
      */
+    function _syncPager(result) {
+        const bar = document.getElementById('results-pager');
+        if (!bar) return;
+        const paging = !!(result && Number.isFinite(result.page) && Number.isFinite(result.pageSize));
+        bar.classList.toggle('hidden', !paging);
+        if (!paging) return;
+        const size = result.pageSize;
+        const page = result.page;
+        const count = Number(result.count) || 0;
+        const from = count === 0 ? 0 : (page - 1) * size + 1;
+        const to = count === 0 ? 0 : (page - 1) * size + count;
+        const total = Number.isFinite(result.total) ? result.total : null;
+        const label = document.getElementById('results-page-label');
+        if (label) label.textContent = total == null ? `${from}–${to}` : `${from}–${to} / ${total.toLocaleString()}`;
+        const prev = document.getElementById('btn-page-prev');
+        const next = document.getElementById('btn-page-next');
+        if (prev) prev.disabled = page <= 1;
+        if (next) next.disabled = total == null ? count < size : to >= total;
+        const sel = document.getElementById('results-page-size');
+        if (sel && [...sel.options].some(o => o.value === String(size))) sel.value = String(size);
+    }
+
     function render(result) {
         // Reset all transient button states — new results replace old context
         if (_diffCsvActive) {
@@ -970,9 +992,10 @@ const Results = (() => {
         });
 
         // In Diff cols mode the table shows the synthetic result, not `result`
-        const _metaCount = _diffCols ? _lastResult.count : result.count;
+        const _metaCount = _diffCols ? _lastResult.count : (Number.isFinite(result.total) ? result.total : result.count);
         document.getElementById('results-meta').textContent =
             `${_metaCount.toLocaleString()} row${_metaCount !== 1 ? 's' : ''}`;
+        _syncPager(result);
 
         // Expand on new results so the user always sees the data
         _setCollapsed(false);
@@ -1070,6 +1093,7 @@ const Results = (() => {
         document.querySelector('#results-table thead').innerHTML = '';
         document.querySelector('#results-table tbody').innerHTML = '';
         document.getElementById('results-meta').textContent = '';
+        _syncPager(null);
         const errEl = document.getElementById('results-error');
         if (errEl) { errEl.textContent = ''; errEl.classList.add('hidden'); }
 
@@ -1089,6 +1113,7 @@ const Results = (() => {
         document.querySelector('#results-table thead').innerHTML = '';
         document.querySelector('#results-table tbody').innerHTML = '';
         document.getElementById('results-meta').textContent = 'Error';
+        _syncPager(null);
 
         // Show the error banner
         const errEl = document.getElementById('results-error');
