@@ -130,6 +130,23 @@ test('sqlite profile can list tables, run a query, and import SQL', async () => 
     assert.equal(parsed.json.data.tables[0].name, 'course');
     assert.equal(parsed.json.data.tables[0].columns.length, 2);
     assert.equal(parsed.json.data.whereConditions[0].op, '=');
+
+    // SJ-014: query.preview and query.execute keep commas inside quoted SELECT literals.
+    for (const sortAlpha of [false, true]) {
+      const sjState = {
+        profileId: id,
+        tables: [{ id: 't1', name: 'course', alias: 'c', order: 1 }],
+        select: [], selectMode: 'raw', selectRaw: "'A,B' AS label",
+        selectSortAlpha: sortAlpha, limit: 10,
+      };
+      const sjPreview = await post(started.port, 'query.preview', sjState);
+      assert.equal(sjPreview.json.success, true, sjPreview.json.message);
+      assert.match(sjPreview.json.data.sql, /'A,B' AS label/);
+      const sjExecuted = await post(started.port, 'query.execute', sjState);
+      assert.equal(sjExecuted.json.success, true, sjExecuted.json.message);
+      assert.match(sjExecuted.json.data.sql, /'A,B' AS label/);
+      assert.deepEqual(sjExecuted.json.data.rows, [['A,B'], ['A,B']]);
+    }
   } finally {
     started.server.close();
     fs.rmSync(storageDir, { recursive: true, force: true });
