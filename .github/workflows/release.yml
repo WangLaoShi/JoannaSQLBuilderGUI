@@ -148,7 +148,7 @@ jobs:
             installers/*.exe
             installers/*.zip
           body: |
-            SQL Joiner ${{ steps.ver.outputs.version }}。安装包没有签名。
+            SQL Joiner ${{ steps.ver.outputs.version }}。安装包没有代码签名，也没有苹果公证。
 
             下载名里的空格会显示成点。装好后的应用名仍是 SQL Joiner。
 
@@ -157,6 +157,24 @@ jobs:
             - Windows 安装程序：`SQL.Joiner.Setup.${{ steps.ver.outputs.version }}.exe`
             - Windows 压缩包：`SQL.Joiner-${{ steps.ver.outputs.version }}-win.zip`
 
-            Mac 第一次打开：在 Finder 里按住 Control 点应用，选择「打开」。Windows 若出现 SmartScreen，选择「仍要运行」。
+            ## Mac：没有签名时怎么打开
+
+            从这里下载的 dmg 会被 macOS 标成隔离文件。第一次打开可能提示「已损坏，无法打开」或「无法验证开发者」。安装包没有坏，不要移到废纸篓。
+
+            1. 打开 dmg，把 SQL Joiner 拖到「应用程序」。已经装过的话，先用菜单栏退出旧的 SQL Joiner，再替换。
+            2. 打开「终端」，粘贴下面这一行后回车，去掉隔离标记：
+
+               ```
+               xattr -dr com.apple.quarantine "/Applications/SQL Joiner.app"
+               ```
+
+            3. 从「应用程序」或启动台打开 SQL Joiner。
+            4. 如果还是提示无法验证开发者：在 Finder 里按住 Control 点 SQL Joiner，选择「打开」，再点对话框里的「打开」。也可以到「系统设置 → 隐私与安全性」，点「仍要打开」。
+
+            Apple 芯片下载带 `-arm64` 的 dmg。Intel Mac 下载不带 `-arm64` 的那个。
+
+            ## Windows
+
+            安装程序没有微软签名。若出现 SmartScreen，选择「仍要运行」。安装时如果旧版本还开着，安装程序会结束 `SQL Joiner.exe` 再覆盖文件。
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

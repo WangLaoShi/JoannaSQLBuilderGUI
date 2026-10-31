@@ -1,6 +1,6 @@
 # JoannaSQLBuilderGUI
 
-这是 SQL Joiner 的 Node 版本，GitHub 仓库名是 JoannaSQLBuilderGUI，当前版本 **1.1.6**。代码放在 `node_app/`。学生不需要安装 PHP。本机起一个服务，浏览器或安装包打开同一套拖拽画布，用它连接 MySQL，把 SELECT 查询搭出来再运行。
+这是 SQL Joiner 的 Node 版本，GitHub 仓库名是 JoannaSQLBuilderGUI，当前版本 **1.1.7**。代码放在 `node_app/`。学生不需要安装 PHP。本机起一个服务，浏览器或安装包打开同一套拖拽画布，用它连接 MySQL，把 SELECT 查询搭出来再运行。
 
 窗口标题仍显示 SQL Joiner。原来的 PHP 版本仍在 `app/`，说明见根目录的 `README.md`。协议是 GPL-3.0-or-later，见 `LICENSE`。
 
@@ -57,6 +57,11 @@
 - 外层的 WHERE、GROUP BY、ORDER BY、LIMIT 作用在合并之后的结果上，别名固定是 `u`。列名沿用第一条分支。没有单独勾选字段时，SELECT 是 `u.*`。
 - 这一组不能再拉 JOIN。普通表卡片不能用 ∪。窗口函数、CTE、`EXISTS` 仍然要写在卡片里的 SQL 中。
 
+### 2026-10-31　1.1.7
+
+- Mac 安装包能打开窗口。1.1.5 和 1.1.6 用了模块里不存在的 `__dirname` 去找图标，窗口还没创建进程就停了，屏幕上只剩菜单。
+- 每次 Release 页面都说明：没有苹果签名时，先去掉隔离标记再打开。
+
 ### 2026-10-25　1.1.6
 
 - LIMIT 行数增加全量和分页。全量不加 `LIMIT`。分页用 `LIMIT` / `OFFSET` 重新查询，结果栏可以改每页条数。
@@ -99,7 +104,7 @@ npm run desktop
 
 ## 版本
 
-版本号只写在 `node_app/package.json` 的 `version`。页面标题、右上角、关于窗口、保存的场景，以及安装包文件名都读这个号。当前源码版本是 1.1.6。
+版本号只写在 `node_app/package.json` 的 `version`。页面标题、右上角、关于窗口、保存的场景，以及安装包文件名都读这个号。当前源码版本是 1.1.7。
 
 ## 安装包
 
@@ -129,7 +134,7 @@ git push origin v1.1.1
 
 标签和 `version` 不一致时，测试步骤会失败，不会去打包。普通 `git push` 不会产生 Release。`node_app/dist/` 不进 Git。
 
-本机仍然可以打包，供自己试装。在 `node_app` 里执行 `npm run pack`。Mac 第一次打开：在 Finder 里按住 Control 再点应用，选择「打开」。Windows 若出现 SmartScreen，选择「仍要运行」。
+本机仍然可以打包，供自己试装。在 `node_app` 里执行 `npm run pack`。没有签名时怎么打开，写在每次 Release 页面和 `使用说明.md` 里：先执行 `xattr -dr com.apple.quarantine "/Applications/SQL Joiner.app"`，再打开。Windows 若出现 SmartScreen，选择「仍要运行」。
 
 ## 界面怎么用
 

@@ -1,10 +1,13 @@
-import { app, BrowserWindow, Menu, nativeImage } from 'electron';
+import { app, BrowserWindow, Menu, dialog, nativeImage } from 'electron';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { startServer } from '../server/index.js';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
 
 function windowIcon() {
   const image = nativeImage.createFromPath(
-    path.join(__dirname, '..', 'public', 'assets', 'img', 'icon.png')
+    path.join(here, '..', 'public', 'assets', 'img', 'icon.png')
   );
   return image.isEmpty() ? undefined : image;
 }
@@ -125,11 +128,20 @@ async function open() {
   await win.loadURL(`http://127.0.0.1:${started.port}/`);
 }
 
-app.whenReady().then(() => {
-  const icon = windowIcon();
-  if (icon && process.platform === 'darwin') app.dock.setIcon(icon);
+app.whenReady().then(async () => {
   installMenu();
-  return open();
+  try {
+    const icon = windowIcon();
+    if (icon && process.platform === 'darwin') app.dock.setIcon(icon);
+  } catch (err) {
+    console.error(err);
+  }
+  try {
+    await open();
+  } catch (err) {
+    console.error(err);
+    dialog.showErrorBox('SQL Joiner', err?.message || String(err));
+  }
 });
 app.on('before-quit', () => {
   quitting = true;
