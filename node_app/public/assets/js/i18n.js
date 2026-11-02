@@ -278,6 +278,12 @@
       `这会在画布上新增一组，放进导入的查询。\n\n找到的表：${m[1] === 'none' ? '没有' : m[1]}\n找到的连接：${m[2]}\n\n继续吗？`],
     [/^This will CLEAR all current canvas tables, joins, and query conditions, then apply the imported query\.\n\nTables found: (.+)\nJoins found: (\d+)\n\nContinue\?$/, m =>
       `这会清空画布上现有的表、连接和查询条件，再放进导入的查询。\n\n找到的表：${m[1] === 'none' ? '没有' : m[1]}\n找到的连接：${m[2]}\n\n继续吗？`],
+    [/^Running (\d+) of (\d+)…$/, m => `正在运行第 ${m[1]} 条，共 ${m[2]} 条…`],
+    [/^Ran (\d+) statements\.$/, m => `已运行 ${m[1]} 条语句。`],
+    [/^Query finished\. Showing the first (\d+) rows\. This statement has more\.$/, m => `查询已完成。这条语句只显示了前 ${Number(m[1]).toLocaleString()} 行，后面的没有载入。`],
+    [/^Ran (\d+) statements\. Showing the first (\d+) rows\. This statement has more\.$/, m => `已运行 ${m[1]} 条语句。其中一条只显示了前 ${Number(m[2]).toLocaleString()} 行，后面的没有载入。`],
+    [/^([\d,]+) rows, more were not loaded$/, m => `${m[1]} 行，后面的没有载入`],
+    [/^Statement (\d+) of (\d+) failed\.$/, m => `第 ${m[1]} 条（共 ${m[2]} 条）执行失败。`],
   ];
 
   function t(text) {
@@ -353,7 +359,7 @@
 
   function skipText(parent) {
     if (parent.id === 'btn-theme' || parent.id === 'btn-lang') return true;
-    return !!parent.closest('script,style,textarea,input,[contenteditable="true"],#results-table,#sql-preview-text,.toast');
+    return !!parent.closest('script,style,textarea,input,[contenteditable="true"],#results-table,#sql-preview-text,.toast,.cm-editor,.cm-tooltip');
   }
 
   function paintThemeButton() {
@@ -378,7 +384,7 @@
   }
 
   function skipAttr(el) {
-    return !!el.closest('script,style,#results-table,#sql-preview-text,.toast');
+    return !!el.closest('script,style,#results-table,#sql-preview-text,.toast,.cm-editor,.cm-tooltip');
   }
 
   function apply(root) {

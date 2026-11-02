@@ -6,6 +6,7 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { startServer } from '../server/index.js';
 import { APP_VERSION } from '../server/version.js';
+import { queryAtMost } from '../server/db.js';
 
 async function post(port, action, body = {}, headers = {}) {
   const res = await fetch(`http://127.0.0.1:${port}/api.php?action=${encodeURIComponent(action)}`, {
@@ -130,6 +131,15 @@ test('sqlite profile can list tables, run a query, and import SQL', async () => 
     assert.equal(parsed.json.data.tables[0].name, 'course');
     assert.equal(parsed.json.data.tables[0].columns.length, 2);
     assert.equal(parsed.json.data.whereConditions[0].op, '=');
+
+    const capped = await queryAtMost({
+      kind: 'sqlite',
+      async query() {
+        return { rows: [[1], [2], [3]], fields: [{ name: 'n' }] };
+      },
+    }, 'SELECT n', 2);
+    assert.equal(capped.truncated, true);
+    assert.deepEqual(capped.rows, [[1], [2]]);
   } finally {
     started.server.close();
     fs.rmSync(storageDir, { recursive: true, force: true });

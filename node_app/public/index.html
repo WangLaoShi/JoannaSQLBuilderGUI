@@ -7,7 +7,7 @@
     <script>
         try { if (localStorage.getItem('sqlj-theme') === 'light') document.documentElement.dataset.theme = 'light'; } catch (e) {}
     </script>
-    <link rel="stylesheet" href="assets/css/app.css?v=page3">
+    <link rel="stylesheet" href="assets/css/app.css?v=page5">
     <link rel="icon" type="image/png" href="assets/img/icon.png?v=logo1">
 </head>
 <body>
@@ -139,6 +139,25 @@
             </div>
             <div id="canvas-hint">Double-click a table in the sidebar to add it to the canvas</div>
         </section>
+        <div id="sql-workspace" class="hidden">
+            <div class="sqlws-toolbar">
+                <span class="sqlws-title">SQL</span>
+                <button type="button" id="sqlws-format" title="Format each statement">Format</button>
+                <button type="button" id="sqlws-from-canvas" title="Insert the SQL generated from the canvas">From canvas</button>
+                <span id="sqlws-status"></span>
+                <span class="sqlws-spacer"></span>
+                <div class="sqlws-run">
+                    <button type="button" id="sqlws-run" class="primary" title="Run the statement at the cursor. Ctrl+Enter or Cmd+Enter. Ctrl+Shift+Enter or Cmd+Shift+Enter runs all.">Run Current</button>
+                    <button type="button" id="sqlws-run-menu" class="primary" title="More run actions" aria-haspopup="true">▾</button>
+                    <div id="sqlws-run-pop" class="sqlws-menu-pop hidden">
+                        <button type="button" data-run="all">Run All</button>
+                        <button type="button" data-run="current">Run Current</button>
+                        <button type="button" data-run="selection">Run Selection</button>
+                    </div>
+                </div>
+            </div>
+            <div id="sqlws-editor"></div>
+        </div>
         </div>
 
         <!-- RIGHT: Query Config Panel -->
@@ -293,6 +312,7 @@
             <button id="btn-recordings-toggle" class="rec-toggle-btn" title="Query Recordings — left-click to open, right-click to toggle recording"><span class="rec-dot"></span>Rec <span class="rec-toggle-count">0</span></button>
             <button id="btn-timeline-toggle" class="tl-toggle-btn" title="Timeline — Cmd/Ctrl+click any result cell to pin it here">⊶ TL <span class="tl-count-badge tl-btn-badge">0</span></button>
             <button id="btn-minimap-badge" class="minimap-badge-toggle" title="Toggle minimap (canvas overview)">⊹</button>
+            <button id="btn-sql-workspace" class="btn-outline-blue" title="Write several SQL statements, with completion, and run one or all" aria-pressed="false">SQL</button>
             <button id="btn-run-custom-query" class="btn-outline-blue" title="Run a custom SQL query">▶ Run Custom Query</button>
             <button id="btn-cancel-query" class="btn-danger hidden" title="Kill the running query on the server">✕ Cancel Query</button>
             <button id="btn-run-query" class="primary">▶ Run Query</button>
@@ -1283,7 +1303,7 @@
                              (after app.js so _highlightSQL is available)
     -->
     <script src="assets/js/i18n-dict.js"></script>
-    <script src="assets/js/i18n.js"></script>
+    <script src="assets/js/i18n.js?v=editor2"></script>
     <script src="assets/js/dialog.js"></script>
     <script src="assets/js/api.js"></script>
     <script src="assets/js/profiles.js"></script>
@@ -1297,6 +1317,8 @@
     <script src="assets/js/plot.js"></script>
     <script src="assets/js/config.js"></script>
     <script src="assets/js/results.js"></script>
+    <script src="assets/js/sql-editor.js?v=editor2"></script>
+    <script src="assets/js/sql-workspace.js?v=editor2"></script>
     <script src="assets/js/undo.js"></script>
     <script src="assets/js/sql-backdrop.js"></script>
     <script src="assets/js/minimap.js"></script>

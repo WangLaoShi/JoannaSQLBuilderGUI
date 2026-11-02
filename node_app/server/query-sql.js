@@ -86,9 +86,36 @@ function skipQuoted(sql, i) {
  * User-supplied SQL may only be one read statement. A semicolon inside a
  * quote stays; a second statement, or a write keyword outside quotes, does not.
  */
+function readableStart(sql) {
+  let i = 0;
+  const text = String(sql ?? '');
+  while (i < text.length) {
+    const c = text[i];
+    if (/\s/.test(c)) { i += 1; continue; }
+    if (c === '-' && text[i + 1] === '-') {
+      const nl = text.indexOf('\n', i);
+      i = nl < 0 ? text.length : nl + 1;
+      continue;
+    }
+    if (c === '#') {
+      const nl = text.indexOf('\n', i);
+      i = nl < 0 ? text.length : nl + 1;
+      continue;
+    }
+    if (c === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      i = end < 0 ? text.length : end + 2;
+      continue;
+    }
+    if (c === '(') { i += 1; continue; }
+    break;
+  }
+  return text.slice(i);
+}
+
 export function assertSingleRead(sql) {
   const text = String(sql ?? '').trim().replace(/;+\s*$/, '');
-  if (!READ_START.test(text)) {
+  if (!READ_START.test(readableStart(text))) {
     throw new HttpError('Only a single read query can be run (SELECT, WITH, EXPLAIN, SHOW, or DESCRIBE).', 400);
   }
   let i = 0;

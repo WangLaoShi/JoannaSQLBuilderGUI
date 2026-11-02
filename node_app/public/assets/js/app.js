@@ -843,6 +843,7 @@ const App = (() => {
     }
 
     async function _activateProfile(profileId) {
+        window.SqlWorkspace?.rememberProfile(profileId);
         State.activeProfileId = profileId;
         localStorage.setItem('activeProfileId', profileId);
         await loadDatabases();
@@ -924,6 +925,7 @@ const App = (() => {
         try {
             const tables = await API.schema.tables(State.activeProfileId, State.activeDatabase || '');
             _renderTableList(tables);
+            window.SqlWorkspace?.refreshSchema();
         } catch (e) {
             _notify('Failed to load tables: ' + e.message, 'error');
         }

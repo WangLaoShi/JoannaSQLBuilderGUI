@@ -1,6 +1,6 @@
 {
   "name": "sql-joiner-node",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "private": true,
   "description": "SQL Joiner without PHP. A local Node server speaks MySQL, serves the same canvas, and Electron installs it for students.",
   "license": "GPL-3.0-or-later",
@@ -8,7 +8,8 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "node server/index.js",
-    "test": "node --test test/parity.test.js test/http.test.js",
+    "test": "node --test test/parity.test.js test/http.test.js test/sql-script.test.js",
+    "build:editor": "esbuild editor/sql-editor-entry.js --bundle --format=iife --outfile=public/assets/js/sql-editor.js",
     "desktop": "electron .",
     "pack": "electron-builder --mac dmg --arm64 --x64 && electron-builder --win nsis zip --x64",
     "pack:mac": "electron-builder --mac dmg --arm64 --x64",
@@ -18,26 +19,59 @@
     "mysql2": "^3.15.3"
   },
   "devDependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@lezer/highlight": "^1.2.5",
     "electron": "^35.7.5",
-    "electron-builder": "^26.0.12"
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.28.2"
   },
   "build": {
     "appId": "com.sqljoiner.node",
     "productName": "SQL Joiner",
     "asar": true,
-    "directories": { "output": "dist" },
-    "files": ["electron/**", "server/**", "public/**", "package.json"],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**",
+      "server/**",
+      "public/**",
+      "package.json"
+    ],
     "mac": {
       "category": "public.app-category.education",
       "identity": null,
       "icon": "build/icon.icns",
-      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }]
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
     },
     "win": {
       "icon": "build/icon.ico",
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "zip", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {

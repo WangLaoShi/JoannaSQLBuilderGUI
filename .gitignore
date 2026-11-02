@@ -11,3 +11,4 @@ php-bin/
 
 /package-lock.json
 .bash_aliases
+.DS_Store

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { HttpError } from './errors.js';
 import { ProfileStore } from './profiles.js';
 import { ContextStore } from './contexts.js';
-import { openDb, projectResult } from './db.js';
+import { openDb, projectResult, queryAtMost } from './db.js';
 import { assembleQuery, assertSingleRead, containsVariables } from './query-sql.js';
 import { parseSql } from './query-parser.js';
 import * as schema from './schema.js';
@@ -146,8 +146,21 @@ export function createApp({ storageDir }) {
       const sql = String(body.sql ?? '').trim();
       if (sql === '') throw new HttpError('sql is required.', 400);
       const { db } = await withProfile(body.profileId);
-      try { return await runSelect(db, sql, req.headers['x-tab-id']); }
-      finally { await db.close(); }
+      try {
+        if (containsVariables(sql)) {
+          throw new HttpError('Queries containing session variables (@name) cannot be executed against the database. Remove variables before running.', 400);
+        }
+        assertSingleRead(sql);
+        const result = await queryAtMost(db, sql);
+        const projected = projectResult(sql, result);
+        if (result.truncated) projected.truncated = true;
+        return projected;
+      } catch (err) {
+        if (err instanceof HttpError) throw err;
+        throw new HttpError(`Query failed: ${err.message}`, 400);
+      } finally {
+        try { await db.close(); } catch { /* a capped read already destroyed the socket */ }
+      }
     },
     async 'query.parseFromSQL'(_req, body) {
       const sql = String(body.sql ?? '').trim();

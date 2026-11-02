@@ -76,8 +76,56 @@ export async function openDb(profile) {
       return firstResult(rows, fields);
     },
     async exec(sql) { await conn.query(sql); },
-    async close() { await conn.end(); },
+    async close() {
+      if (conn.connection?.state === 'disconnected') return;
+      await conn.end();
+    },
   };
+}
+
+/** Stop a read after this many rows so the results grid cannot freeze the page. */
+export const RAW_ROW_CAP = 5000;
+
+export function queryAtMost(db, sql, cap = RAW_ROW_CAP) {
+  if (db.kind !== 'mysql') {
+    return db.query(sql).then(result => trimResult(result, cap));
+  }
+  return new Promise((resolve, reject) => {
+    const rows = [];
+    let fields = [];
+    let settled = false;
+    const settle = (err, truncated) => {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err);
+      else resolve({ rows, fields, truncated });
+    };
+    let query;
+    try {
+      query = db.conn.connection.query(sql);
+    } catch (err) {
+      reject(err);
+      return;
+    }
+    query.on('fields', incoming => { fields = incoming || []; });
+    query.on('result', row => {
+      rows.push(row);
+      if (rows.length < cap) return;
+      query.removeAllListeners('result');
+      query.removeAllListeners('end');
+      query.removeAllListeners('error');
+      try { db.conn.connection.destroy(); } catch { /* already closed */ }
+      settle(null, true);
+    });
+    query.on('end', () => settle(null, false));
+    query.on('error', err => settle(err, false));
+  });
+}
+
+function trimResult(result, cap) {
+  const rows = result.rows || [];
+  if (rows.length <= cap) return { ...result, truncated: false };
+  return { ...result, rows: rows.slice(0, cap), truncated: true };
 }
 
 function firstResult(rows, fields) {
